@@ -1,0 +1,11 @@
+Agents: 
+Supervisor Agent
+WhatsApp Gateway Agent
+OTP / Auth Agent
+Session Manager Agent
+Language Agent
+Menu Agent
+Order Agent
+Delivery Agent
+Payment Agent
+Notification Agent
