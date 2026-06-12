@@ -48,27 +48,27 @@ async function callLLM(systemPrompt, userMessage) {
 //    2. Remove the /* and */ around this section
 // ─────────────────────────────────────────────────────────────
 
-/*
-async function callLLM(systemPrompt, userMessage) {
-  const response = await axios.post(
-    'https://api.aimlapi.com/v1/chat/completions',
-    {
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user',   content: userMessage  }
-      ]
-    },
-    {
-      headers: {
-        'Authorization': `Bearer ${process.env.AIML_API_KEY}`,
-        'Content-Type': 'application/json'
-      }
-    }
-  );
-  return response.data.choices[0].message.content;
-}
-*/
+
+// async function callLLM(systemPrompt, userMessage) {
+//   const response = await axios.post(
+//     'https://api.aimlapi.com/v1/chat/completions',
+//     {
+//       model: 'gpt-4o',
+//       messages: [
+//         { role: 'system', content: systemPrompt },
+//         { role: 'user',   content: userMessage  }
+//       ]
+//     },
+//     {
+//       headers: {
+//         'Authorization': `Bearer ${process.env.AIML_API_KEY}`,
+//         'Content-Type': 'application/json'
+//       }
+//     }
+//   );
+//   return response.data.choices[0].message.content;
+// }
+
 
 
 // ─────────────────────────────────────────────────────────────
@@ -79,27 +79,27 @@ async function callLLM(systemPrompt, userMessage) {
 //  TO ACTIVATE: import callFeatherless in languageAgent.js only
 // ─────────────────────────────────────────────────────────────
 
-/*
-async function callFeatherless(systemPrompt, userMessage) {
-  const response = await axios.post(
-    'https://api.featherless.ai/v1/chat/completions',
-    {
-      model: 'mistralai/Mistral-7B-Instruct-v0.3',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user',   content: userMessage  }
-      ]
-    },
-    {
-      headers: {
-        'Authorization': `Bearer ${process.env.FEATHERLESS_API_KEY}`,
-        'Content-Type': 'application/json'
-      }
-    }
-  );
-  return response.data.choices[0].message.content;
-}
-*/
+
+// async function callFeatherless(systemPrompt, userMessage) {
+//   const response = await axios.post(
+//     'https://api.featherless.ai/v1/chat/completions',
+//     {
+//       model: 'mistralai/Mistral-7B-Instruct-v0.3',
+//       messages: [
+//         { role: 'system', content: systemPrompt },
+//         { role: 'user',   content: userMessage  }
+//       ]
+//     },
+//     {
+//       headers: {
+//         'Authorization': `Bearer ${process.env.FEATHERLESS_API_KEY}`,
+//         'Content-Type': 'application/json'
+//       }
+//     }
+//   );
+//   return response.data.choices[0].message.content;
+// }
+
 
 
 module.exports = { callLLM };

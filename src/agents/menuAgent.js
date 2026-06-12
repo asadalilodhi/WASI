@@ -26,7 +26,7 @@ const MENU = [
 //  Input:  customer's message (any language)
 //  Output: reply string + parsed items if order detected
 // ─────────────────────────────────────────────────────────────
-async function handleMenuQuery(customerMessage, detectedLanguage = 'ENGLISH') {
+async function handleMenuQuery(customerMessage, detectedLanguage = 'ROMAN-URDU') {
   const systemPrompt = `
     You are the Menu Agent for WASI, a WhatsApp food ordering system.
     

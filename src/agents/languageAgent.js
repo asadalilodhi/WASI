@@ -31,9 +31,7 @@ const { callLLM } = require('../llm');
 async function detectLanguage(message) {
   const systemPrompt = `
     You are a language detection expert.
-    Detect the language of the given message.
-    Reply with ONLY one word: ENGLISH, ROMAN-URDU.
-    Nothing else. No explanation.
+    Detect the language of this message. Reply with ONLY one word: ENGLISH, URDU, ROMAN-URDU, or SINDHI. Roman Urdu means Urdu spoken language written in English/Latin letters (e.g. "mujhe khana chahiye", "ap ka kya haal hai").
   `;
 
   // ─── ACTIVE: Groq via callLLM ────────────────────────────
@@ -46,7 +44,7 @@ async function detectLanguage(message) {
   const lang = detected.trim().toUpperCase();
 
   // Fallback to ENGLISH if model returns something unexpected
-  if (!['ENGLISH', 'ROMAN-URDU'].includes(lang)) return 'ENGLISH';
+  if (!['ENGLISH', 'ROMAN-URDU', 'URDU', 'SINDHI'].includes(lang)) return 'ROMAN-URDU';
   return lang;
 }
 
@@ -56,7 +54,7 @@ async function detectLanguage(message) {
 //  Agents internally work in English — translate inbound messages
 // ─────────────────────────────────────────────────────────────
 async function translateToEnglish(message, fromLanguage) {
-  if (fromLanguage === 'ENGLISH') return message; // no translation needed
+  if (fromLanguage === 'ENGLISH' || fromLanguage === 'ROMAN-URDU') return message; // no translation needed
 
   const systemPrompt = `
     You are a translator.
@@ -74,17 +72,17 @@ async function translateToEnglish(message, fromLanguage) {
 //  After agent generates English reply, translate it back
 // ─────────────────────────────────────────────────────────────
 async function translateReply(englishReply, toLanguage) {
-  if (toLanguage === 'ENGLISH') return englishReply; // no translation needed
-
-  const systemPrompt = `
-    You are a translator for a food ordering chatbot in Pakistan.
-    Translate the following English message to ${toLanguage}.
-    Keep it natural and conversational.
-    Return ONLY the translated text. No explanation.
-  `;
-
-  // Always uses callLLM — no provider switch needed here
-  return await callLLM(systemPrompt, englishReply);
+  if (toLanguage === 'ENGLISH') return englishReply;
+  if (toLanguage === 'ROMAN-URDU') {
+    // Translate to Roman Urdu (Urdu written in English letters)
+    const systemPrompt = `
+      You are a translator. Translate the following to Roman Urdu
+      (Urdu language written using English/Latin letters, as commonly
+      used in Pakistani WhatsApp chats). Example: "آپ کا آرڈر" becomes
+      "Aap ka order". Return ONLY the translated text.
+    `;
+    return await callLLM(systemPrompt, englishReply);
+  }
 }
 
 
