@@ -11,7 +11,7 @@
 //  Always calls callLLM() from llm.js — switching happens there.
 // ============================================================
 
-const { callLLM } = require('../llm');
+const { callLLMChat } = require('../llm');
 
 // ─────────────────────────────────────────────────────────────
 //  DELIVERY ZONES CONFIG
@@ -67,7 +67,7 @@ async function handleDeliveryMessage(customerMessage, detectedLanguage = 'ROMAN-
     End with: ADDRESS_OUT_OF_ZONE
   `;
 
-  const reply = await callLLM(systemPrompt, customerMessage);
+  const reply = await callLLMChat(systemPrompt, customerMessage);
 
   // Parse signals
   const orderTypeMatch = reply.match(/ORDER_TYPE:\s*(DELIVERY|TAKEAWAY)/);

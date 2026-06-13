@@ -18,7 +18,7 @@
 // ============================================================
 
 // ─── ACTIVE: using callLLM from llm.js (Groq right now) ─────
-const { callLLM } = require('../llm');
+const { callFeatherless } = require('../llm');
 
 // ─── PAUSED: swap above line to this after kickoff stream ────
 // const { callLLM, callFeatherless } = require('../llm');
@@ -35,7 +35,7 @@ async function detectLanguage(message) {
   `;
 
   // ─── ACTIVE: Groq via callLLM ────────────────────────────
-  const detected = await callLLM(systemPrompt, message);
+  const detected = await callFeatherless(systemPrompt, message);
 
   // ─── PAUSED: swap above line to this after kickoff stream ─
   // const detected = await callFeatherless(systemPrompt, message);
@@ -62,8 +62,8 @@ async function translateToEnglish(message, fromLanguage) {
     Return ONLY the translated text. No explanation.
   `;
 
-  // Always uses callLLM — no provider switch needed here
-  return await callLLM(systemPrompt, message);
+  // Always uses callFeatherless — no provider switch needed here
+  return await callFeatherless(systemPrompt, message);
 }
 
 
@@ -81,7 +81,7 @@ async function translateReply(englishReply, toLanguage) {
       used in Pakistani WhatsApp chats). Example: "آپ کا آرڈر" becomes
       "Aap ka order". Return ONLY the translated text.
     `;
-    return await callLLM(systemPrompt, englishReply);
+    return await callFeatherless(systemPrompt, englishReply);
   }
 }
 
