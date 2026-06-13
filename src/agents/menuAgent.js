@@ -5,7 +5,7 @@
 //  To switch providers: only change llm.js — nothing here.
 // ============================================================
 
-const { callLLM } = require('../llm');
+const { callLLMChat } = require('../llm');
 
 // ─────────────────────────────────────────────────────────────
 //  MENU DATA
@@ -45,7 +45,7 @@ async function handleMenuQuery(customerMessage, detectedLanguage = 'ROMAN-URDU')
     If no items were selected yet, do NOT include the ITEMS_SELECTED line.
   `;
 
-  const reply = await callLLM(systemPrompt, customerMessage);
+  const reply = await callLLMChat(systemPrompt, customerMessage);
 
   // Parse selected items out of the reply if present
   const itemsMatch = reply.match(/ITEMS_SELECTED:\s*(\[.*\])/);

@@ -15,7 +15,7 @@
 //  Always calls callLLM() from llm.js — switching happens there.
 // ============================================================
 
-const { callLLM } = require('../llm');
+const { callLLMChat } = require('../llm');
 
 // ─────────────────────────────────────────────────────────────
 //  PAYMENT METHODS
@@ -63,7 +63,7 @@ async function handlePaymentMessage(customerMessage, orderTotal, detectedLanguag
     PAYMENT_STATUS: <pending | initiated>
   `;
 
-  const reply = await callLLM(systemPrompt, customerMessage);
+  const reply = await callLLMChat(systemPrompt, customerMessage);
 
   // Parse signals
   const methodMatch = reply.match(/PAYMENT_METHOD:\s*(COD|JazzCash|Easypaisa|card)/);

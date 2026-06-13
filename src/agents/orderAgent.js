@@ -7,7 +7,7 @@
 //  Always calls callLLM() from llm.js — switching happens there.
 // ============================================================
 
-const { callLLM } = require('../llm');
+const { callLLMChat } = require('../llm');
 const { MENU } = require('./menuAgent');
 
 // ─────────────────────────────────────────────────────────────
@@ -133,7 +133,7 @@ async function handleOrderMessage(sessionId, customerMessage, detectedLanguage =
     PAYMENT_CAPTURED: <Cash on Delivery or Online Transfer>
   `;
 
-  const reply = await callLLM(systemPrompt, customerMessage);
+  const reply = await callLLMChat(systemPrompt, customerMessage);
 
   // ── Parse signals from LLM reply ──────────────────────────
 

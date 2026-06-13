@@ -10,7 +10,9 @@
 // ============================================================
 
 require('dotenv').config();
+const readline = require('readline');
 
+const { getLastThinking } = require('./llm');
 const { handleMenuQuery }                        = require('./agents/menuAgent');
 const { processMessage, translateReply }         = require('./agents/languageAgent');
 const { handleOrderMessage, addItemsToCart,
@@ -23,6 +25,29 @@ const { generateOTP, validateOTP }               = require('./agents/otpAgent');
 const { createSession, updateState,
         touchSession, getSession }               = require('./agents/sessionManager');
 const { handleIncomingMessage }                  = require('./agents/supervisorAgent');
+
+
+async function humanInput(prompt, defaultValue = null, agentThinking = null) {
+  if (!HUMAN_INPUT_MODE) return defaultValue;
+
+  // Show what the agent was assuming before you respond
+  if (agentThinking) {
+    console.log('\n─────────────────────────────────────────');
+    console.log('🧠 Agent is assuming:');
+    console.log(agentThinking);
+    console.log('─────────────────────────────────────────');
+    console.log('💬 You can now correct these assumptions or confirm them.');
+  }
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(`\n👤 YOU [${prompt}]: `, (answer) => {
+      rl.close();
+      resolve(answer.trim() || defaultValue);
+    });
+  });
+}
+
 
 function section(title) {
   console.log(`\n${'═'.repeat(55)}`);
@@ -186,11 +211,12 @@ async function runTests() {
 
   const customerPhone = '+923009999999';
 
-  // 9a: First message — triggers OTP
-  console.log('\n[Customer]: Haan bhai, mujhe order karna hai');
+  // 9a:
   const r1 = await handleIncomingMessage(customerPhone, 'Haan bhai, mujhe order karna hai');
   console.log('[WASI]:', r1.reply);
-  console.log('State: OTP should now be pending\n');
+  const msg2 = await humanInput('Your response (or press Enter to continue)', '000000', getLastThinking());
+  const r1_1 = await handleIncomingMessage(customerPhone, msg2);
+  console.log('[WASI]:', r1_1.reply);
 
   divider();
 
@@ -213,28 +239,32 @@ async function runTests() {
 
   // 9d: Order items
   console.log('\n[Customer]: Ek Zinger Burger aur ek Coke dena');
-  const r4 = await handleIncomingMessage(customerPhone, 'Ek Zinger Burger aur ek Coke dena');
+  const msg4 = await humanInput('What do you want to order?', 'Ek Zinger Burger aur ek Coke dena');
+  const r4 = await handleIncomingMessage(customerPhone, msg4);
   console.log('[WASI]:', r4.reply);
 
   divider();
 
   // 9e: Give address
   console.log('\n[Customer]: Ghar pe bhejo, House 12, Block 5, Gulshan-e-Iqbal, Karachi');
-  const r5 = await handleIncomingMessage(customerPhone, 'Ghar pe bhejo, House 12, Block 5, Gulshan-e-Iqbal, Karachi');
+  const msg5 = await humanInput('Give your address', 'Ghar pe bhejo, House 12, Block 5, Gulshan');
+  const r5 = await handleIncomingMessage(customerPhone, msg5);
   console.log('[WASI]:', r5.reply);
 
   divider();
 
   // 9f: Choose payment
   console.log('\n[Customer]: Cash on delivery kar do bhai');
-  const r6 = await handleIncomingMessage(customerPhone, 'Cash on delivery kar do bhai');
+  const msg6 = await humanInput('Choose payment method', 'Cash on delivery kar do bhai');
+  const r6 = await handleIncomingMessage(customerPhone, msg6);
   console.log('[WASI]:', r6.reply);
 
   divider();
 
   // 9g: Confirm order
   console.log('\n[Customer]: Haan bhai confirm kar do');
-  const r7 = await handleIncomingMessage(customerPhone, 'Haan bhai confirm kar do');
+  const msg7 = await humanInput('Confirm or cancel?', 'Haan bhai confirm kar do');
+  const r7 = await handleIncomingMessage(customerPhone, msg7);
   console.log('[WASI]:', r7.reply);
   console.log('\nOrder submitted:', r7.orderSubmitted);
   if (r7.order) {
