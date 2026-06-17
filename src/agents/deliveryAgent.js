@@ -1,31 +1,31 @@
 // ============================================================
-//  WASI — DELIVERY AGENT
-//  SRS Ref: Section 3.2, FR-C07
+//  WASI — DELIVERY AGENT (Rebuilt for Consistency)
 //
-//  Responsibilities:
-//  - Collect and validate delivery address from customer
-//  - Determine order type (delivery or takeaway)
-//  - Estimate delivery time based on tenant zone config
+//  Two-phase address collection:
+//  1. ADDRESS_CAPTURED = customer mentioned an address (DON'T save yet)
+//  2. ADDRESS_CONFIRMED = customer confirmed full details (SAVE now)
 //
-//  No provider switching needed here.
-//  Always calls callLLM() from llm.js — switching happens there.
+//  The agent MUST ask for full details before confirming.
 // ============================================================
 
-const { callLLMChat } = require('../llm');
+const { callLLM } = require('../llm');
 
 // ─────────────────────────────────────────────────────────────
 //  DELIVERY ZONES CONFIG
-//  Later: pull this from tenant config in database (Section 6.4)
 // ─────────────────────────────────────────────────────────────
 const DELIVERY_ZONES = [
-  { zone: 'Zone A', areas: ['Gulshan', 'Clifton', 'DHA'],        fee: 100, eta: '20-30 mins' },
+  { zone: 'Zone A', areas: ['Gulshan', 'Clifton', 'DHA', 'Gulistan-e-Johar', 'Johar'],        fee: 100, eta: '20-30 mins' },
   { zone: 'Zone B', areas: ['Nazimabad', 'North Karachi', 'FB Area'], fee: 150, eta: '30-45 mins' },
   { zone: 'Zone C', areas: ['Korangi', 'Landhi', 'Malir'],       fee: 200, eta: '45-60 mins' },
 ];
 
+// Pre-build zone string once
+const ZONES_STRING = DELIVERY_ZONES.map(z =>
+  `${z.zone}: ${z.areas.join(', ')} — Rs.${z.fee}, ETA ${z.eta}`
+).join('\n');
+
 // ─────────────────────────────────────────────────────────────
 //  DETECT ZONE FROM ADDRESS
-//  Simple keyword match — later can be upgraded to geo-API
 // ─────────────────────────────────────────────────────────────
 function detectZone(address) {
   const lower = address.toLowerCase();
@@ -34,65 +34,103 @@ function detectZone(address) {
       return zone;
     }
   }
-  return null; // address not in a known zone
+  return null;
 }
 
 
 // ─────────────────────────────────────────────────────────────
 //  MAIN: HANDLE DELIVERY MESSAGE
-//  Collects order type, address, validates zone, gives ETA
 // ─────────────────────────────────────────────────────────────
-async function handleDeliveryMessage(customerMessage, detectedLanguage = 'ROMAN-URDU') {
-  const systemPrompt = `
-    You are the Delivery Agent for WASI, a WhatsApp food ordering assistant.
+async function handleDeliveryMessage(conversationHistory, detectedLanguage = 'ROMAN-URDU', accumulatedAddress = null) {
+  // --- STEP 1: THE BRAIN (Data Extraction) ---
+  const brainPrompt = `You are a strict data-extraction parser for WASI food delivery.
+Your ONLY job is to read the conversation and extract delivery details.
 
-    Your job — collect the following information step by step:
-    1. Is this a DELIVERY or TAKEAWAY order? Ask if not clear.
-    2. If DELIVERY: ask for the full delivery address (street, area, city).
-    3. Once address is given: confirm it back to the customer.
+ADDRESS COLLECTED SO FAR: ${accumulatedAddress || 'None yet'}
+(If the user provides new address info, APPEND it to the existing address. Do NOT replace it.)
 
-    Available delivery zones and fees:
-    ${DELIVERY_ZONES.map(z => `- ${z.zone} (${z.areas.join(', ')}): Rs.${z.fee} fee, ETA: ${z.eta}`).join('\n')}
+DELIVERY ZONES:
+${ZONES_STRING}
 
-    Always reply in ${detectedLanguage}.
+INSTRUCTIONS:
+Extract the following information:
+- orderType: "DELIVERY" or "TAKEAWAY"
+- rawAddress: The FULL accumulated address including any new details the user just provided. Combine old + new.
+- isConfirmed: true ONLY if the assistant asked the user to confirm a full address and the user explicitly said yes/haan/ji/ok.
+- isOutOfZone: true if the address is provided but falls entirely outside all delivery zones.
 
-    When order type is determined, end your reply with:
-    ORDER_TYPE: DELIVERY or ORDER_TYPE: TAKEAWAY
+You MUST output ONLY a valid JSON object matching this schema:
+{
+  "orderType": "DELIVERY",
+  "rawAddress": "Habib University, Gate 2, Gulistan-e-Johar",
+  "isConfirmed": true,
+  "isOutOfZone": false
+}
+If a value is not yet known, set it to null.`;
 
-    When address is confirmed, end your reply with:
-    ADDRESS_CAPTURED: <exact address the customer gave>
+  // Give the Brain the last assistant message + last user message for context
+  const lastAssistant = conversationHistory.filter(msg => msg.role === 'assistant').pop();
+  const lastUser = conversationHistory.filter(msg => msg.role === 'user').pop();
+  const brainMessages = [lastAssistant, lastUser].filter(Boolean);
 
-    If the address is outside all delivery zones, inform the customer and ask
-    them to switch to takeaway or provide a different address.
-    End with: ADDRESS_OUT_OF_ZONE
-  `;
+  let extracted = { orderType: null, rawAddress: null, isConfirmed: false, isOutOfZone: false };
+  
+  try {
+    const brainReply = await callLLM(brainPrompt, brainMessages, 200, true);
+    const parsed = JSON.parse(brainReply);
+    if (parsed) {
+      extracted = { ...extracted, ...parsed };
+      console.log(`  🧠 [Delivery Brain] Extracted: ${JSON.stringify(extracted)}`);
+    }
+  } catch (e) {
+    console.log(`  ⚠️ [Delivery Brain] Failed to extract JSON. Error: ${e.message}`);
+  }
 
-  const reply = await callLLMChat(systemPrompt, customerMessage);
+  // --- STEP 2: THE MOUTH (Conversation Generation) ---
+  const mouthPrompt = `You are WASI's delivery agent. Your job is to collect the delivery address.
 
-  // Parse signals
-  const orderTypeMatch = reply.match(/ORDER_TYPE:\s*(DELIVERY|TAKEAWAY)/);
-  const addressMatch   = reply.match(/ADDRESS_CAPTURED:\s*(.+)/);
-  const outOfZone      = reply.includes('ADDRESS_OUT_OF_ZONE');
+CURRENT EXTRACTED STATE:
+Order Type: ${extracted.orderType || 'Unknown'}
+Address: ${extracted.rawAddress || 'Unknown'}
+Confirmed: ${extracted.isConfirmed}
 
-  const orderType = orderTypeMatch ? orderTypeMatch[1].trim() : null;
-  const rawAddress = addressMatch ? addressMatch[1].trim() : null;
-  const zone = rawAddress ? detectZone(rawAddress) : null;
+DELIVERY ZONES:
+${ZONES_STRING}
 
-  // Clean reply
-  const cleanReply = reply
-    .replace(/ORDER_TYPE:.*$/m, '')
-    .replace(/ADDRESS_CAPTURED:.*$/m, '')
-    .replace(/ADDRESS_OUT_OF_ZONE/g, '')
-    .trim();
+COLLECT (step by step — follow this EXACTLY):
+1. First ask: DELIVERY ya TAKEAWAY?
+2. If DELIVERY: ask for FULL address — area, block/sector, street, house/building, landmark.
+3. KEEP ASKING until you have at minimum: area name + specific location (street/house/gate/building).
+   - "Gulistan-e-Johar" alone is NOT enough. Ask: "Gulistan-e-Johar mein kahan? Block, street, house number batao."
+   - "Habib University" alone is NOT enough. Ask: "Konsa gate? Koi landmark?"
+4. Once you have enough detail, confirm the FULL address back to the customer.
+
+RULES:
+- Be polite and concise.
+- If address is outside ALL zones, politely suggest Takeaway or a different area.
+- CRITICAL: DO NOT ask for name, phone number, or payment. Your ONLY job is the delivery address.
+- CRITICAL: NEVER summarize the user's order cart or total price. Another system handles that.
+
+Reply in ${detectedLanguage}.`;
+
+  const cleanReply = await callLLM(mouthPrompt, conversationHistory, 250, false);
+
+  const zone = extracted.rawAddress ? detectZone(extracted.rawAddress) : null;
+  const isAddressConfirmed = extracted.isConfirmed && extracted.rawAddress;
+
+  if (isAddressConfirmed) {
+    console.log(`  📍 [Delivery] Address confirmed: ${extracted.rawAddress} | Zone: ${zone?.zone || 'NONE'}`);
+  }
 
   return {
     reply: cleanReply,
-    orderType,                    // 'DELIVERY' | 'TAKEAWAY' | null
-    rawAddress,                   // raw string from customer
-    zone,                         // matched zone object or null
+    outOfZone: extracted.isOutOfZone,
+    zone: zone,
+    rawAddress: isAddressConfirmed ? extracted.rawAddress : null,
+    partialAddress: extracted.rawAddress || null,  // Always return what the Brain extracted, even if unconfirmed
+    orderType: extracted.orderType,
     deliveryFee: zone?.fee || 0,
-    eta: zone?.eta || null,
-    outOfZone,
+    eta: zone?.eta || null
   };
 }
 

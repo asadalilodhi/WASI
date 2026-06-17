@@ -1,18 +1,20 @@
 // ============================================================
-//  WASI — ORDER AGENT
-//  Handles: building the cart, calculating totals, collecting
-//  delivery address, confirming the final order before submit.
+//  WASI — ORDER AGENT (Rebuilt for Consistency)
 //
-//  No provider switching needed here.
-//  Always calls callLLM() from llm.js — switching happens there.
+//  This agent ONLY handles: name, phone, final summary,
+//  and order confirmation. Menu/Delivery/Payment are handled
+//  by their dedicated agents via the Supervisor.
+//
+//  All summaries come from formatOrderSummary() — the LLM
+//  is forbidden from generating its own item lists or totals.
 // ============================================================
 
-const { callLLMChat } = require('../llm');
+const { callLLM } = require('../llm');
 const { MENU } = require('./menuAgent');
+const { formatOrderSummary } = require('./orderUtils');
 
 // ─────────────────────────────────────────────────────────────
 //  ORDER STATE
-//  One order object per session — supervisor passes sessionId
 // ─────────────────────────────────────────────────────────────
 const orders = {};
 
@@ -24,8 +26,15 @@ function getOrder(sessionId) {
       totalPrice: 0,
       deliveryAddress: null,
       paymentMethod: null,
-      status: 'BUILDING', // BUILDING → CONFIRMING → CONFIRMED → SUBMITTED
+      customerName: null,
+      phoneNumber: null,
+      status: 'BUILDING', // BUILDING → CONFIRMING → CONFIRMED → REVIEWING → SUBMITTED
       createdAt: new Date().toISOString(),
+      deliveryFee: 0,
+      eta: null,
+      orderType: null,
+      paymentStatus: 'pending',
+      pendingClarifications: [],  // [{ type: 'fries_size', qty: 3 }]
     };
   }
   return orders[sessionId];
@@ -34,21 +43,26 @@ function getOrder(sessionId) {
 
 // ─────────────────────────────────────────────────────────────
 //  ADD ITEMS TO CART
-//  Called by supervisor when menuAgent returns selectedItems
+//  IMPORTANT: This REPLACES qty for existing items, it does
+//  NOT accumulate. The LLM's ITEMS_SELECTED is the intended
+//  state for those items, not a delta.
 // ─────────────────────────────────────────────────────────────
 function addItemsToCart(sessionId, selectedItems) {
   const order = getOrder(sessionId);
 
   selectedItems.forEach((incoming) => {
-    const menuItem = MENU.find(m => m.id === incoming.id);
-    if (!menuItem) return; // skip unknown items
+    const menuItem = MENU.find(m => String(m.id) === String(incoming.id));
+    if (!menuItem) {
+      console.log(`  ⚠️  [Cart] Skipped unknown item id=${incoming.id}`);
+      return;
+    }
 
-    // If item already in cart, increase quantity
-    const existing = order.items.find(i => i.id === incoming.id);
+    const existing = order.items.find(i => String(i.id) === String(incoming.id));
     if (existing) {
-      existing.qty += incoming.qty;
+      // REPLACE quantity, not add
+      existing.qty = incoming.qty;
       existing.subtotal = existing.qty * existing.price;
-    } else {
+    } else if (incoming.qty > 0) {
       order.items.push({
         id:       menuItem.id,
         name:     menuItem.name,
@@ -59,123 +73,121 @@ function addItemsToCart(sessionId, selectedItems) {
     }
   });
 
-  // Recalculate total
+  // Cleanup any items with 0 quantity
+  order.items = order.items.filter(i => i.qty > 0);
+
   order.totalPrice = order.items.reduce((sum, i) => sum + i.subtotal, 0);
+
+  // Debug: always log cart state after modification
+  console.log(`  🛒 [Cart] Updated: ${order.items.map(i => `${i.name} ×${i.qty}`).join(', ')} | Total: Rs.${order.totalPrice}`);
+
   return order;
 }
 
 
 // ─────────────────────────────────────────────────────────────
 //  REMOVE ITEM FROM CART
-//  Customer says "remove the coke" or "cancel fries"
 // ─────────────────────────────────────────────────────────────
 function removeItemFromCart(sessionId, itemId) {
   const order = getOrder(sessionId);
-  order.items = order.items.filter(i => i.id !== itemId);
+  order.items = order.items.filter(i => String(i.id) !== String(itemId));
   order.totalPrice = order.items.reduce((sum, i) => sum + i.subtotal, 0);
   return order;
 }
 
 
 // ─────────────────────────────────────────────────────────────
-//  CART SUMMARY (human readable)
-//  Used to show customer what's in their order
+//  CART SUMMARY (human readable — from CODE, not LLM)
 // ─────────────────────────────────────────────────────────────
 function getCartSummary(sessionId) {
   const order = getOrder(sessionId);
-
-  if (order.items.length === 0) return 'Your cart is empty.';
-
-  const lines = order.items.map(
-    i => `• ${i.name} x${i.qty} = Rs.${i.subtotal}`
-  );
-  lines.push(`\nTotal: Rs.${order.totalPrice}`);
-  return lines.join('\n');
+  return formatOrderSummary(order);
 }
 
 
 // ─────────────────────────────────────────────────────────────
 //  HANDLE ORDER CONVERSATION
-//  Manages the flow: cart → address → payment → confirmation
-//  detectedLanguage passed in so LLM replies in correct language
+//  This agent is ONLY called when items + address + payment
+//  are all collected. It handles: name, phone, confirmation.
 // ─────────────────────────────────────────────────────────────
-async function handleOrderMessage(sessionId, customerMessage, detectedLanguage = 'ROMAN-URDU') {
+async function handleOrderMessage(sessionId, conversationHistory, detectedLanguage = 'ROMAN-URDU') {
   const order = getOrder(sessionId);
-  const cartSummary = getCartSummary(sessionId);
+  const canonicalSummary = formatOrderSummary(order);
 
-  const systemPrompt = `
-    You are the Order Agent for WASI, a WhatsApp food ordering assistant.
+  // If the order is already under review or submitted, avoid looping
+  if (order.status === 'REVIEWING') {
+    return { reply: '🚧 Aapka order receptionist ke paas review ho raha hai. Please wait...', order, isConfirmed: false, cartSummary: canonicalSummary };
+  }
+  if (order.status === 'SUBMITTED') {
+    return { reply: '✅ Aapka order submit ho chuka hai! Jaldi process hoga. Shukriya!', order, isConfirmed: true, cartSummary: canonicalSummary };
+  }
 
-    Current order state:
-    - Items in cart: ${JSON.stringify(order.items)}
-    - Cart summary: ${cartSummary}
-    - Delivery address: ${order.deliveryAddress || 'NOT PROVIDED YET'}
-    - Payment method: ${order.paymentMethod || 'NOT CHOSEN YET'}
-    - Order status: ${order.status}
+  const systemPrompt = `You are WASI's order finalization agent for WhatsApp food ordering.
 
-    Your job — guide customer through these steps IN ORDER:
-    1. If cart is empty → ask them to choose items first
-    2. If cart has items but NO address → ask for delivery address
-    3. If address collected but NO payment → ask payment method (Cash on Delivery or Online Transfer)
-    4. If all collected → show full order summary and ask for confirmation
+CURRENT ORDER STATE (THIS IS THE TRUTH — do NOT invent different items, quantities, or prices):
+${canonicalSummary}
 
-    Payment options available: Cash on Delivery, Online Transfer (Easypaisa/JazzCash)
+Customer Name: ${order.customerName || 'NOT COLLECTED'}
+Phone: ${order.phoneNumber || 'NOT COLLECTED'}
 
-    Always reply in ${detectedLanguage}.
+YOUR JOB (in order):
+1. If name is NOT COLLECTED → ask for customer's name. Nothing else.
+2. If phone is NOT COLLECTED → ask for customer's phone number. Nothing else.
+3. If both collected → show the EXACT order summary above (copy it verbatim), then ask: "Confirm karna chahte ho?"
+4. If customer says yes/confirm/ok → emit ORDER_CONFIRMED signal.
 
-    When customer confirms the order, end your reply with:
-    ORDER_CONFIRMED
+CRITICAL RULES:
+- NEVER generate your own item list, quantities, or prices. Use ONLY what is shown in CURRENT ORDER STATE above.
+- NEVER mention delivery preparation, ETAs, or driver information.
+- When showing the final summary, copy the items and total from CURRENT ORDER STATE exactly.
+- After confirmation, say "Aapka order restaurant ko bhej diya gaya hai confirmation ke liye!" in ${detectedLanguage}. Do NOT say "order confirmed" or "order complete".
 
-    When customer provides their address, end your reply with:
-    ADDRESS_CAPTURED: <the address they gave>
+Reply in ${detectedLanguage}.
 
-    When customer chooses payment, end your reply with:
-    PAYMENT_CAPTURED: <Cash on Delivery or Online Transfer>
-  `;
+SIGNALS (append on new line when applicable):
+- ORDER_CONFIRMED (when customer explicitly confirms the final order)
+- NAME_CAPTURED: <name> (when customer gives their name)
+- PHONE_CAPTURED: <phone> (when customer gives their phone number)`;
 
-  const reply = await callLLMChat(systemPrompt, customerMessage);
+  const reply = await callLLM(systemPrompt, conversationHistory, 300);
 
   // ── Parse signals from LLM reply ──────────────────────────
-
-  // Capture address
-  const addressMatch = reply.match(/ADDRESS_CAPTURED:\s*(.+)/);
-  if (addressMatch) {
-    order.deliveryAddress = addressMatch[1].trim();
-    order.status = 'CONFIRMING';
+  const nameMatch = reply.match(/NAME_CAPTURED:\s*(.+)/);
+  if (nameMatch) {
+    order.customerName = nameMatch[1].trim();
+    console.log(`  👤 [Order] Name captured: ${order.customerName}`);
   }
 
-  // Capture payment method
-  const paymentMatch = reply.match(/PAYMENT_CAPTURED:\s*(.+)/);
-  if (paymentMatch) {
-    order.paymentMethod = paymentMatch[1].trim();
+  const phoneMatch = reply.match(/PHONE_CAPTURED:\s*(.+)/);
+  if (phoneMatch) {
+    order.phoneNumber = phoneMatch[1].trim();
+    console.log(`  📱 [Order] Phone captured: ${order.phoneNumber}`);
   }
 
-  // Order confirmed
   const isConfirmed = reply.includes('ORDER_CONFIRMED');
   if (isConfirmed) {
-    order.status = 'CONFIRMED';
+    order.status = 'REVIEWING';
+    console.log('🛎️ RECEPTIONIST_REVIEW:', JSON.stringify(order, null, 2));
   }
 
   // Clean reply — remove signal lines before sending to customer
   const cleanReply = reply
     .replace(/ORDER_CONFIRMED/g, '')
-    .replace(/ADDRESS_CAPTURED:.*$/m, '')
-    .replace(/PAYMENT_CAPTURED:.*$/m, '')
+    .replace(/NAME_CAPTURED:.*$/m, '')
+    .replace(/PHONE_CAPTURED:.*$/m, '')
     .trim();
 
   return {
     reply: cleanReply,
-    order,                  // full order object for supervisor/dashboard
-    isConfirmed,            // true when customer says yes to final summary
-    cartSummary,
+    order,
+    isConfirmed,
+    cartSummary: canonicalSummary,
   };
 }
 
 
 // ─────────────────────────────────────────────────────────────
 //  SUBMIT ORDER
-//  Called by supervisor after ORDER_CONFIRMED
-//  Marks order as SUBMITTED — dashboard picks it up from here
 // ─────────────────────────────────────────────────────────────
 function submitOrder(sessionId) {
   const order = getOrder(sessionId);

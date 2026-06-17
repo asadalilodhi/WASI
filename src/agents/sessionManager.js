@@ -32,7 +32,8 @@ function createSession(sessionId, phoneNumber, tenantId = 'default') {
     phoneNumber,
     tenantId,
     state:          'INITIATED',
-    language:       'ROMAN-URDU',
+    language:       null, // Set to null initially so we detect on first message
+    conversationHistory: [], // Array of {role: 'user'|'assistant', content: string}
     cartSnapshot:   null,
     createdAt:      new Date().toISOString(),
     lastActiveAt:   new Date().toISOString(),
@@ -129,6 +130,24 @@ function cancelSession(sessionId) {
 }
 
 
+// ─────────────────────────────────────────────────────────────
+//  CONVERSATION HISTORY HELPERS
+// ─────────────────────────────────────────────────────────────
+function addToHistory(sessionId, role, content) {
+  const session = sessions[sessionId];
+  if (!session) return;
+  session.conversationHistory.push({ role, content });
+  // Keep last 30 messages (15 turns) to prevent context window overflow
+  if (session.conversationHistory.length > 30) {
+    session.conversationHistory = session.conversationHistory.slice(-30);
+  }
+}
+
+function getHistory(sessionId) {
+  const session = sessions[sessionId];
+  return session ? session.conversationHistory : [];
+}
+
 module.exports = {
   createSession,
   getSession,
@@ -137,5 +156,7 @@ module.exports = {
   touchSession,
   saveCartSnapshot,
   cancelSession,
+  addToHistory,
+  getHistory,
   GRACE_PERIOD_MS,
 };
