@@ -26,6 +26,8 @@ const { createSession, updateState,
         touchSession, getSession }               = require('./agents/sessionManager');
 const { handleIncomingMessage }                  = require('./agents/supervisorAgent');
 
+const HUMAN_INPUT_MODE = false;
+
 
 async function humanInput(prompt, defaultValue = null, agentThinking = null) {
   if (!HUMAN_INPUT_MODE) return defaultValue;

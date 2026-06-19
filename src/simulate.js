@@ -1,147 +1,163 @@
 // ============================================================
-//  simulate.js — WASI Live Interactive Simulation
+//  simulate.js — WASI Realistic End-to-End Simulation
 //
-//  Run with: node src/simulate.js
+//  Run with:  node src/simulate.js
 //
-//  YOU play two roles:
-//  1. CUSTOMER  → text like a WhatsApp customer (Roman Urdu/English)
-//  2. RECEPTIONIST → review the order and approve/request changes
+//  Simulates the full WhatsApp ordering experience:
 //
-//  The full agent pipeline runs in between:
-//  Customer msg → Language Agent → Supervisor → Sub-agents → Reply
-//  Once order is submitted → Receptionist reviews → Agents notify customer
+//    YOU (Customer) ↔ WASI Agents ↔ YOU (Receptionist)
+//
+//  Flow:
+//    1. You chat as the customer — place your order naturally
+//    2. Once all info is collected, WASI submits to receptionist
+//    3. You switch hats — review the order as the receptionist
+//    4. You can approve OR send feedback (e.g. "need better address")
+//    5. If feedback → customer gets notified, you reply, loop continues
+//    6. When receptionist confirms → customer gets final notification
+//
+//  The simulation ends when the receptionist confirms the order.
 // ============================================================
 
 require('dotenv').config();
 const readline = require('readline');
 const { handleIncomingMessage, handleRejection } = require('./agents/supervisorAgent');
-const { generateOTP }                            = require('./agents/otpAgent');
+const { getLatestOTP }                           = require('./agents/otpAgent');
 const { getLastThinking }                        = require('./llm');
-
 
 // ─────────────────────────────────────────────────────────────
 //  CONFIG
 // ─────────────────────────────────────────────────────────────
-const CUSTOMER_PHONE    = '+923009999999';
-const RESTAURANT_NAME   = 'WASI Restaurant';
-const SHOW_THINKING     = process.env.SHOW_THINKING === 'true';
-
+const CUSTOMER_PHONE  = '+923009999999';
+const RESTAURANT_NAME = 'WASI Restaurant';
+const SHOW_THINKING   = process.env.SHOW_THINKING === 'true';
 
 // ─────────────────────────────────────────────────────────────
-//  TERMINAL HELPERS
+//  TERMINAL UI
 // ─────────────────────────────────────────────────────────────
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+const rl = readline.createInterface({
+  input:  process.stdin,
+  output: process.stdout,
+});
 
 function ask(prompt) {
-  return new Promise((resolve) => {
-    rl.question(prompt, (answer) => resolve(answer.trim()));
+  return new Promise(resolve => {
+    rl.question(prompt, answer => resolve(answer.trim()));
   });
 }
 
-function print(msg) { console.log(msg); }
+const CLR = {
+  reset:   '\x1b[0m',
+  dim:     '\x1b[2m',
+  green:   '\x1b[32m',
+  cyan:    '\x1b[36m',
+  yellow:  '\x1b[33m',
+  magenta: '\x1b[35m',
+  red:     '\x1b[31m',
+  bold:    '\x1b[1m',
+  white:   '\x1b[37m',
+  bg:      '\x1b[44m',
+};
 
-function banner(text, char = '═') {
-  const line = char.repeat(55);
-  print(`\n${line}\n  ${text}\n${line}`);
+function print(msg = '') { console.log(msg); }
+
+function header(text) {
+  const line = '━'.repeat(58);
+  print(`\n${CLR.cyan}${line}${CLR.reset}`);
+  print(`${CLR.bold}  ${text}${CLR.reset}`);
+  print(`${CLR.cyan}${line}${CLR.reset}\n`);
 }
 
-function divider() { print('─'.repeat(55)); }
-
-function customerBubble(msg) {
-  print(`\n  📱 CUSTOMER: ${msg}`);
+function subheader(text) {
+  print(`\n${CLR.dim}  ── ${text} ${'─'.repeat(Math.max(0, 45 - text.length))}${CLR.reset}\n`);
 }
 
-function wasiBubble(msg) {
-  print(`\n  🤖 WASI: ${msg}\n`);
-}
+function customerMsg(msg)     { print(`  ${CLR.green}📱 Customer:${CLR.reset}  ${msg}`); }
+function wasiMsg(msg)         { print(`  ${CLR.cyan}🤖 WASI:${CLR.reset}      ${msg}\n`); }
+function receptionistMsg(msg) { print(`  ${CLR.magenta}🖥️  Receptionist:${CLR.reset} ${msg}`); }
+function systemNote(msg)      { print(`  ${CLR.dim}${msg}${CLR.reset}`); }
 
-function receptionistPanel(order) {
-  banner('📋 RECEPTIONIST DASHBOARD — NEW ORDER', '█');
-  print(`  Customer Phone : ${order.sessionId ? CUSTOMER_PHONE : 'N/A'}`);
-  print(`  Order Type     : ${order.orderType || 'Not specified'}`);
-  print(`  Address        : ${order.deliveryAddress || 'N/A'}`);
-  print(`  Payment        : ${order.paymentMethod || 'N/A'}`);
-  print(`  Delivery Fee   : Rs. ${order.deliveryFee || 0}`);
-  print(`  ETA            : ${order.eta || 'N/A'}`);
-  print('\n  ITEMS:');
-  if (order.items && order.items.length > 0) {
-    order.items.forEach(i => {
-      print(`    • ${i.name} ×${i.qty}  →  Rs. ${i.subtotal}`);
-    });
-  } else {
-    print('    (no items captured)');
-  }
-  print(`\n  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-  print(`  TOTAL          : Rs. ${order.totalPrice || 0}`);
-  print(`  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
-}
-
-function thinkingBlock() {
+function showThinking() {
   const thinking = getLastThinking();
   if (SHOW_THINKING && thinking) {
-    print('\n  ┌─ 🧠 Agent Thinking ─────────────────────');
+    print(`${CLR.dim}  ┌─ 🧠 Agent Thinking ─────────────────────────`);
     thinking.split('\n').forEach(line => print(`  │  ${line}`));
-    print('  └─────────────────────────────────────────\n');
+    print(`  └────────────────────────────────────────────${CLR.reset}\n`);
   }
+}
+
+function orderCard(order) {
+  const line = '━'.repeat(50);
+  print(`\n  ${CLR.yellow}${line}${CLR.reset}`);
+  print(`  ${CLR.bold}${CLR.yellow}  📋  ORDER RECEIVED${CLR.reset}`);
+  print(`  ${CLR.yellow}${line}${CLR.reset}`);
+  print(`  ${CLR.dim}Phone:${CLR.reset}     ${CUSTOMER_PHONE}`);
+  print(`  ${CLR.dim}Type:${CLR.reset}      ${order.orderType || 'Delivery'}`);
+  print(`  ${CLR.dim}Address:${CLR.reset}   ${order.deliveryAddress || '—'}`);
+  print(`  ${CLR.dim}Payment:${CLR.reset}   ${order.paymentMethod || '—'}`);
+  print(`  ${CLR.dim}Del. Fee:${CLR.reset}  Rs. ${order.deliveryFee || 0}`);
+  print(`  ${CLR.dim}ETA:${CLR.reset}       ${order.eta || '—'}`);
+  print();
+  print(`  ${CLR.bold}  Items:${CLR.reset}`);
+  if (order.items && order.items.length > 0) {
+    order.items.forEach(i => {
+      print(`    • ${i.name}  ×${i.qty}  →  Rs. ${i.subtotal}`);
+    });
+  } else {
+    print(`    ${CLR.dim}(no items)${CLR.reset}`);
+  }
+  print(`  ${'─'.repeat(40)}`);
+  print(`  ${CLR.bold}  TOTAL: Rs. ${order.totalPrice || 0}${CLR.reset}`);
+  print(`  ${CLR.yellow}${line}${CLR.reset}\n`);
 }
 
 
 // ─────────────────────────────────────────────────────────────
-//  PHASE 1: CUSTOMER CONVERSATION LOOP
-//  Runs until order is submitted (orderSubmitted === true)
+//  PHASE 1: CUSTOMER CONVERSATION
+//  You chat as the customer until the order is fully submitted.
+//  The OTP is auto-injected (printed so you can enter it).
 // ─────────────────────────────────────────────────────────────
-async function runCustomerPhase() {
-  banner('PHASE 1 — CUSTOMER CONVERSATION', '═');
-  print('  You are the CUSTOMER. Type your messages as you would on WhatsApp.');
-  print('  Roman Urdu, English, or Urdu script — all work.');
-  print('  The WASI agents will handle everything automatically.\n');
-
-  // Step 1: Inject OTP automatically for simulation
-  // In real app, customer sends first message unprompted
-  print('  [SIM] Injecting first customer message to start session...\n');
-  divider();
+async function customerPhase() {
+  header('PHASE 1 — You are the CUSTOMER');
+  print('  Chat naturally, like you would on WhatsApp.');
+  print('  Roman Urdu, English, or Urdu — all work.');
+  print('  Type your messages below. The agents handle the rest.\n');
 
   let sessionId      = null;
   let orderSubmitted = false;
   let finalOrder     = null;
-  let otpInjected    = false;
-  let messageCount   = 0;
+  let otpShown       = false;
+  let turnCount      = 0;
 
   while (!orderSubmitted) {
-    messageCount++;
+    const input = await ask(`  ${CLR.green}📱 You:${CLR.reset} `);
+    if (!input) continue;
 
-    // Get customer input
-    const customerMsg = await ask('📱 YOU (Customer): ');
-    if (!customerMsg) continue;
-
-    customerBubble(customerMsg);
-    print('  ⏳ WASI agents processing...');
+    turnCount++;
+    customerMsg(input);
+    systemNote('  ⏳ Agents processing...');
 
     try {
-      const result = await handleIncomingMessage(CUSTOMER_PHONE, customerMsg);
+      const result = await handleIncomingMessage(CUSTOMER_PHONE, input);
       sessionId      = result.sessionId;
       orderSubmitted = result.orderSubmitted;
       finalOrder     = result.order;
 
-      thinkingBlock();
-      wasiBubble(result.reply);
+      showThinking();
+      wasiMsg(result.reply);
 
-      // Auto-inject OTP after first message (simulate OTP delivery)
-      if (!otpInjected && messageCount === 1) {
-        const otp = generateOTP(CUSTOMER_PHONE);
-        print(`\n  [SIM] OTP sent to customer's phone: ${otp}`);
-        print(`  [SIM] (In production this goes via WhatsApp — enter it below)\n`);
-        otpInjected = true;
-      }
-
-      if (orderSubmitted) {
-        print('\n  ✅ Order submitted by customer! Moving to receptionist...');
-        divider();
+      // Show OTP after first message so user can enter it
+      if (!otpShown && turnCount === 1) {
+        const otp = getLatestOTP(CUSTOMER_PHONE);
+        if (otp) {
+          print(`  ${CLR.yellow}💡 [SIM] Your OTP is: ${CLR.bold}${otp}${CLR.reset}`);
+          print(`  ${CLR.dim}     (In production this arrives via WhatsApp)${CLR.reset}\n`);
+        }
+        otpShown = true;
       }
 
     } catch (err) {
-      print(`\n  ❌ Agent error: ${err.message}`);
-      print('  (Try rephrasing your message)\n');
+      print(`  ${CLR.red}❌ Error: ${err.message}${CLR.reset}`);
+      print(`  ${CLR.dim}  Try rephrasing.${CLR.reset}\n`);
     }
   }
 
@@ -150,150 +166,143 @@ async function runCustomerPhase() {
 
 
 // ─────────────────────────────────────────────────────────────
-//  PHASE 2: RECEPTIONIST REVIEW LOOP
-//  Receptionist sees order, can confirm or request changes
-//  If changes requested → agents go back to customer
+//  PHASE 2: RECEPTIONIST REVIEW
+//  You switch hats — you're now the restaurant receptionist.
+//  You can confirm the order, or send feedback back to the
+//  customer (which re-enters the customer conversation loop).
 // ─────────────────────────────────────────────────────────────
-async function runReceptionistPhase(sessionId, finalOrder) {
-  banner('PHASE 2 — RECEPTIONIST REVIEW', '═');
-  print('  You are now the RECEPTIONIST. Review the order below.\n');
+async function receptionistPhase(sessionId, order) {
+  header('PHASE 2 — You are the RECEPTIONIST');
+  print('  A new order just came in. Review it below.\n');
 
-  let orderResolved = false;
+  let confirmed = false;
 
-  while (!orderResolved) {
+  while (!confirmed) {
+    orderCard(order);
 
-    // Show order panel
-    receptionistPanel(finalOrder);
+    print('  What would you like to do?\n');
+    print(`    ${CLR.bold}1${CLR.reset}  ✅  Confirm — looks good, I'll call to confirm`);
+    print(`    ${CLR.bold}2${CLR.reset}  💬  Send feedback to customer (e.g. "need more address detail")`);
+    print(`    ${CLR.bold}3${CLR.reset}  🚫  Reject order\n`);
 
-    // Receptionist decision
-    print('  What do you want to do?');
-    print('  [1] Confirm order — customer gets confirmation message');
-    print('  [2] Item out of stock — ask customer to choose alternative');
-    print('  [3] Address issue — ask customer to re-enter address');
-    print('  [4] Duplicate order — close session');
-    print('  [5] Custom message — type your own instruction to send back\n');
-
-    const choice = await ask('🖥️  RECEPTIONIST (choose 1-5): ');
+    const choice = await ask(`  ${CLR.magenta}🖥️  You:${CLR.reset} `);
 
     switch (choice) {
 
-      case '1':
-        // ── CONFIRM ────────────────────────────────────────
-        banner('✅ ORDER CONFIRMED', '─');
-        print('  WhatsApp confirmation sent to customer.');
-        print('  Message: "Thank you! Your order has been received.');
-        print('  Our team will call you shortly to confirm."\n');
-        orderResolved = true;
+      // ── CONFIRM ──────────────────────────────────────────
+      case '1': {
+        confirmed = true;
+
+        subheader('ORDER CONFIRMED');
+        receptionistMsg(`Order confirmed. I'll call the customer to verify.`);
+
+        // Notify customer
+        print();
+        systemNote('  📤 Sending confirmation to customer via WhatsApp...\n');
+        wasiMsg(
+          `✅ Great news! ${RESTAURANT_NAME} has received your order. ` +
+          `A team member will call you shortly at ${CUSTOMER_PHONE} to confirm. ` +
+          `Thank you for ordering with WASI! 🎉`
+        );
         break;
+      }
 
-      case '2':
-        // ── ITEM OUT OF STOCK ──────────────────────────────
-        banner('⚠️  ITEM OUT OF STOCK', '─');
-        const outOfStockItem = await ask('  Which item is out of stock? ');
-        print(`\n  Sending message to customer about "${outOfStockItem}"...`);
+      // ── SEND FEEDBACK → back to customer ─────────────────
+      case '2': {
+        const feedback = await ask(`\n  ${CLR.magenta}🖥️  Your feedback to customer:${CLR.reset} `);
+        if (!feedback) break;
 
-        // Re-enter customer conversation for alternative
-        print('\n  [Switching back to customer conversation for re-ordering]\n');
-        divider();
+        receptionistMsg(feedback);
+        systemNote('\n  📤 Sending feedback to customer via WASI agents...\n');
 
-        let reorderDone = false;
-        while (!reorderDone) {
-          print(`  🤖 WASI → Customer: Sorry, "${outOfStockItem}" is currently unavailable.`);
-          print('  🤖 WASI → Customer: Would you like to choose an alternative item?\n');
+        // Route feedback through the agent pipeline as if WASI is relaying it
+        subheader('CUSTOMER CONVERSATION (feedback loop)');
+        print(`  ${CLR.dim}The customer received your message. They're replying...${CLR.reset}\n`);
 
-          const customerReply = await ask('📱 YOU (Customer — choose alternative): ');
-          customerBubble(customerReply);
-          print('  ⏳ Processing...');
+        // Inject this context and modify order smartly using the new function
+        const { handleReceptionistFeedback } = require('./agents/supervisorAgent');
+        const generatedMsg = await handleReceptionistFeedback(sessionId, feedback);
+        if (generatedMsg) wasiMsg(generatedMsg);
+
+        // Wait for customer reply, DO NOT force an empty evaluation
+
+
+        // Customer replies
+        let resolved = false;
+        while (!resolved) {
+          const customerReply = await ask(`  ${CLR.green}📱 You (Customer):${CLR.reset} `);
+          if (!customerReply) continue;
+
+          customerMsg(customerReply);
+          systemNote('  ⏳ Agents processing...');
 
           try {
             const result = await handleIncomingMessage(CUSTOMER_PHONE, customerReply);
-            thinkingBlock();
-            wasiBubble(result.reply);
+            showThinking();
+            wasiMsg(result.reply);
 
-            if (result.order && result.order.items.length > 0) {
-              finalOrder   = result.order;
-              reorderDone  = true;
-              print('\n  ✅ Customer updated their order. Returning to receptionist...\n');
+            // Update order if agents captured new info
+            if (result.order) {
+              // Direct assignment syncs all fields properly, including null values
+              Object.assign(order, result.order);
+            }
+
+            if (result.orderSubmitted) {
+              resolved = true;
+              print();
+              systemNote('  📤 Updated info sent back to receptionist.\n');
             }
           } catch (err) {
-            print(`\n  ❌ Agent error: ${err.message}\n`);
+            print(`  ${CLR.red}❌ Error: ${err.message}${CLR.reset}\n`);
           }
         }
+
+        subheader('Back to RECEPTIONIST');
+        print('  The customer responded. Updated order below:\n');
         break;
+      }
 
-      case '3':
-        // ── ADDRESS ISSUE ──────────────────────────────────
-        banner('📍 ADDRESS ISSUE', '─');
-        print('  Sending address correction request to customer...\n');
-        print('  🤖 WASI → Customer: We couldn\'t deliver to your address.');
-        print('  🤖 WASI → Customer: Could you please provide a different address?\n');
+      // ── REJECT ───────────────────────────────────────────
+      case '3': {
+        const reason = await ask(`\n  ${CLR.magenta}🖥️  Rejection reason:${CLR.reset} `);
+        confirmed = true;
 
-        const newAddress = await ask('📱 YOU (Customer — new address): ');
-        customerBubble(newAddress);
-        print('  ⏳ Processing...');
+        subheader('ORDER REJECTED');
+        receptionistMsg(`Order rejected: ${reason || 'No reason given'}`);
 
-        try {
-          const result = await handleIncomingMessage(CUSTOMER_PHONE, newAddress);
-          thinkingBlock();
-          wasiBubble(result.reply);
-          if (result.order) finalOrder = result.order;
-          print('  ✅ Address updated. Returning to receptionist...\n');
-        } catch (err) {
-          print(`\n  ❌ Agent error: ${err.message}\n`);
-        }
+        systemNote('\n  📤 Notifying customer...\n');
+        wasiMsg(
+          `We're sorry, ${RESTAURANT_NAME} was unable to process your order` +
+          `${reason ? ': ' + reason : ''}. ` +
+          `Please type *hi* to start a new order.`
+        );
         break;
-
-      case '4':
-        // ── DUPLICATE ORDER ────────────────────────────────
-        banner('🚫 DUPLICATE ORDER — SESSION CLOSED', '─');
-        print('  Customer notified: "It looks like this is a duplicate order.');
-        print('  Your previous order is already being processed."\n');
-        orderResolved = true;
-        break;
-
-      case '5':
-        // ── CUSTOM RECEPTIONIST MESSAGE ────────────────────
-        banner('💬 CUSTOM MESSAGE', '─');
-        const customInstruction = await ask('🖥️  RECEPTIONIST — Type your instruction to send to customer: ');
-        print('\n  ⏳ Sending to customer via WASI agents...\n');
-
-        // Send receptionist's instruction as a message back through supervisor
-        try {
-          const result = await handleIncomingMessage(CUSTOMER_PHONE, `[Receptionist note]: ${customInstruction}`);
-          thinkingBlock();
-          wasiBubble(result.reply);
-          if (result.order) finalOrder = result.order;
-          if (result.orderSubmitted) orderResolved = true;
-        } catch (err) {
-          print(`\n  ❌ Agent error: ${err.message}\n`);
-        }
-        break;
+      }
 
       default:
-        print('  Please enter a number between 1 and 5.\n');
+        print(`  ${CLR.dim}Please enter 1, 2, or 3.${CLR.reset}\n`);
     }
   }
 }
 
 
 // ─────────────────────────────────────────────────────────────
-//  PHASE 3: SIMULATION SUMMARY
+//  SUMMARY
 // ─────────────────────────────────────────────────────────────
-function showSummary(finalOrder) {
-  banner('SIMULATION COMPLETE ✅', '█');
-  if (!finalOrder) {
+function showSummary(order) {
+  header('SIMULATION COMPLETE ✅');
+  if (!order) {
     print('  No order data captured.\n');
     return;
   }
-  print('  FINAL ORDER SNAPSHOT:');
-  print(`  Session ID   : ${finalOrder.sessionId || 'N/A'}`);
-  print(`  Status       : ${finalOrder.status    || 'N/A'}`);
-  print(`  Items        : ${(finalOrder.items || []).map(i => `${i.name} ×${i.qty}`).join(', ')}`);
-  print(`  Address      : ${finalOrder.deliveryAddress || 'N/A'}`);
-  print(`  Payment      : ${finalOrder.paymentMethod   || 'N/A'}`);
-  print(`  Total        : Rs. ${finalOrder.totalPrice  || 0}`);
-  print(`  Submitted At : ${finalOrder.submittedAt     || 'N/A'}`);
-  print('');
+  print(`  ${CLR.dim}Session:${CLR.reset}    ${order.sessionId || '—'}`);
+  print(`  ${CLR.dim}Status:${CLR.reset}     ${order.status || '—'}`);
+  print(`  ${CLR.dim}Items:${CLR.reset}      ${(order.items || []).map(i => `${i.name} ×${i.qty}`).join(', ') || '—'}`);
+  print(`  ${CLR.dim}Address:${CLR.reset}    ${order.deliveryAddress || '—'}`);
+  print(`  ${CLR.dim}Payment:${CLR.reset}    ${order.paymentMethod || '—'}`);
+  print(`  ${CLR.dim}Total:${CLR.reset}      Rs. ${order.totalPrice || 0}`);
+  print(`  ${CLR.dim}Submitted:${CLR.reset}  ${order.submittedAt || '—'}`);
+  print();
 }
 
 
@@ -301,26 +310,24 @@ function showSummary(finalOrder) {
 //  MAIN
 // ─────────────────────────────────────────────────────────────
 async function main() {
-  banner('WASI — LIVE AGENT SIMULATION', '█');
-  print(`  Restaurant : ${RESTAURANT_NAME}`);
-  print(`  Customer # : ${CUSTOMER_PHONE}`);
-  print(`  Thinking   : ${SHOW_THINKING ? 'VISIBLE (SHOW_THINKING=true)' : 'HIDDEN (set SHOW_THINKING=true in .env to see)'}`);
-  print('\n  This simulation has 2 phases:');
-  print('  Phase 1 → You chat as the CUSTOMER until order is placed');
-  print('  Phase 2 → You act as the RECEPTIONIST and handle the order\n');
+  print();
+  header(`WASI — Live Simulation`);
+  print(`  ${CLR.dim}Restaurant:${CLR.reset}  ${RESTAURANT_NAME}`);
+  print(`  ${CLR.dim}Customer #:${CLR.reset}  ${CUSTOMER_PHONE}`);
+  print(`  ${CLR.dim}Thinking:${CLR.reset}    ${SHOW_THINKING ? 'Visible' : 'Hidden'}`);
+  print();
+  print('  This simulation has two phases:');
+  print(`    ${CLR.bold}Phase 1${CLR.reset} — You chat as the ${CLR.green}CUSTOMER${CLR.reset} and place an order`);
+  print(`    ${CLR.bold}Phase 2${CLR.reset} — You review as the ${CLR.magenta}RECEPTIONIST${CLR.reset} and confirm/send feedback`);
+  print();
+  print(`  ${CLR.dim}The back-and-forth continues until the receptionist confirms.${CLR.reset}`);
 
   try {
-    // Phase 1: customer conversation
-    const { sessionId, finalOrder } = await runCustomerPhase();
-
-    // Phase 2: receptionist review
-    await runReceptionistPhase(sessionId, finalOrder);
-
-    // Summary
+    const { sessionId, finalOrder } = await customerPhase();
+    await receptionistPhase(sessionId, finalOrder);
     showSummary(finalOrder);
-
   } catch (err) {
-    print(`\n❌ Simulation crashed: ${err.message}`);
+    print(`\n  ${CLR.red}❌ Simulation crashed: ${err.message}${CLR.reset}`);
     print(err.stack);
   } finally {
     rl.close();

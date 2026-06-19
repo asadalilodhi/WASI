@@ -74,16 +74,30 @@ async function composeAIMessage(context, detectedLanguage = 'ROMAN-URDU') {
 }
 
 
+let customSender = null;
+
+function setWhatsAppSender(fn) {
+  customSender = fn;
+}
+
 // ─────────────────────────────────────────────────────────────
 //  SEND MESSAGE (stub — wired to Gateway in Phase 5)
 //  For now: logs the message and returns it
 // ─────────────────────────────────────────────────────────────
-function sendMessage(phoneNumber, message) {
+async function sendMessage(phoneNumber, message) {
   console.log(`\n📤 [NotificationAgent] To: ${phoneNumber}`);
   console.log(`   Message: ${message}`);
-  // Phase 5: replace console.log with gateway.send(phoneNumber, message)
+  
+  if (customSender) {
+    try {
+      await customSender(phoneNumber, message);
+    } catch (e) {
+      console.error('Failed to send via WhatsApp:', e);
+    }
+  }
+  
   return { delivered: true, message, to: phoneNumber };
 }
 
 
-module.exports = { composeTemplate, composeAIMessage, sendMessage, TEMPLATES };
+module.exports = { composeTemplate, composeAIMessage, sendMessage, TEMPLATES, setWhatsAppSender };

@@ -1,14 +1,14 @@
 // test-supervisor.js
 require('dotenv').config();
-const { handleMessage } = require('./agents/supervisorAgent');
+const { handleIncomingMessage } = require('./agents/supervisorAgent');
 
 async function test() {
   const sessionId = 'test-session-1';
   
-  let reply = await handleMessage(sessionId, 'Hi, I want to order food');
+  let reply = await handleIncomingMessage(sessionId, 'Hi, I want to order food');
   console.log('Bot:', reply);
   
-  reply = await handleMessage(sessionId, 'I want 2 burgers and a coke');
+  reply = await handleIncomingMessage(sessionId, 'I want 2 burgers and a coke');
   console.log('Bot:', reply);
 }
 

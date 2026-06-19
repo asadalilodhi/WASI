@@ -1,88 +1,102 @@
 // ============================================================
-//  WASI — PAYMENT AGENT
-//  SRS Ref: Section 3.2, FR-C08, Section 7.4
+//  WASI — PAYMENT AGENT (Performance-Optimized)
 //
-//  Responsibilities:
-//  - Collect payment method preference from customer
-//  - Handle COD confirmation (default)
-//  - Initiate online payment flow (JazzCash / Easypaisa / card)
-//  - Return payment method and status to Supervisor
-//
-//  Note: Actual JazzCash/Easypaisa API integration is Phase 2.
-//  For now, we collect preference and set status to 'pending'.
-//
-//  No provider switching needed here.
-//  Always calls callLLM() from llm.js — switching happens there.
+//  Changes: Compressed prompt, uses callLLM, max_tokens cap
 // ============================================================
 
-const { callLLMChat } = require('../llm');
+const { callLLM } = require('../llm');
 
 // ─────────────────────────────────────────────────────────────
 //  PAYMENT METHODS
-//  Later: enabled methods pulled from tenant config (Section 6.4)
 // ─────────────────────────────────────────────────────────────
 const PAYMENT_METHODS = [
   { id: 'COD',       label: 'Cash on Delivery',  enabled: true  },
   { id: 'JazzCash',  label: 'JazzCash',           enabled: true  },
   { id: 'Easypaisa', label: 'Easypaisa',          enabled: true  },
-  { id: 'card',      label: 'Credit/Debit Card',  enabled: false }, // disabled by default
+  { id: 'card',      label: 'Credit/Debit Card',  enabled: false },
 ];
 
 function getEnabledMethods() {
   return PAYMENT_METHODS.filter(m => m.enabled);
 }
 
+// Pre-build methods string once
+const METHODS_STRING = getEnabledMethods().map((m, i) => `${i + 1}. ${m.label}`).join('\n');
+
 
 // ─────────────────────────────────────────────────────────────
 //  MAIN: HANDLE PAYMENT MESSAGE
 // ─────────────────────────────────────────────────────────────
-async function handlePaymentMessage(customerMessage, orderTotal, detectedLanguage = 'ROMAN-URDU') {
-  const enabledMethods = getEnabledMethods();
+async function handlePaymentMessage(conversationHistory, orderTotal, detectedLanguage = 'ROMAN-URDU', systemNotes = '') {
+  // --- STEP 1: THE BRAIN (Data Extraction) ---
+  const brainPrompt = `You are a strict data-extraction parser for WASI food delivery.
+Your ONLY job is to read the user's latest message and extract the payment method they chose.
 
-  const systemPrompt = `
-    You are the Payment Agent for WASI, a WhatsApp food ordering assistant.
+PAYMENT OPTIONS:
+${METHODS_STRING}
 
-    Order total: Rs.${orderTotal}
+INSTRUCTIONS:
+Extract the payment method the user explicitly requested.
+Valid methods: "COD", "JazzCash", "Easypaisa", "card".
+- Users might refer to a method by its index number (e.g. "1 karden", "option 2") or by its name. You MUST map these to the correct valid method ID.
+- If the user asks a conversational question (e.g., "what is easypaisa?", "is card available?"), or if their message is unclear or just "ok", set it to null so the conversational agent can respond.
 
-    Available payment methods:
-    ${enabledMethods.map((m, i) => `${i + 1}. ${m.label}`).join('\n')}
+You MUST output ONLY a valid JSON object matching this schema:
+{
+  "paymentMethod": "COD",
+  "paymentStatus": "initiated"
+}
+If a value is not yet known, OR if the requested method violates a CRITICAL CONSTRAINT from the receptionist, set it to null.
 
-    Your job:
-    1. Present the available payment methods clearly
-    2. Ask the customer to choose one
-    3. For Cash on Delivery: confirm it will be collected at doorstep
-    4. For JazzCash / Easypaisa: inform them the restaurant will send a
-       payment request to their mobile number after order confirmation
-       (actual payment link integration coming in Phase 2)
-    5. For card: inform them this option is currently unavailable
+${systemNotes}`;
 
-    Always reply in ${detectedLanguage}.
+  // Give the Brain the last assistant message + last user message for context
+  const lastAssistant = conversationHistory.filter(msg => msg.role === 'assistant').pop();
+  const lastUser = conversationHistory.filter(msg => msg.role === 'user').pop();
+  const brainMessages = [lastAssistant, lastUser].filter(Boolean);
 
-    When customer selects a method, end your reply with:
-    PAYMENT_METHOD: <COD | JazzCash | Easypaisa | card>
-    PAYMENT_STATUS: <pending | initiated>
-  `;
+  let extracted = { paymentMethod: null, paymentStatus: 'pending' };
+  
+  try {
+    const brainReply = await callLLM(brainPrompt, brainMessages, 150, true);
+    const parsed = JSON.parse(brainReply);
+    if (parsed) {
+      extracted = { ...extracted, ...parsed };
+      console.log(`  🧠 [Payment Brain] Extracted: ${JSON.stringify(extracted)}`);
+    }
+  } catch (e) {
+    console.log(`  ⚠️ [Payment Brain] Failed to extract JSON. Error: ${e.message}`);
+  }
 
-  const reply = await callLLMChat(systemPrompt, customerMessage);
+  // --- STEP 2: THE MOUTH (Conversation Generation) ---
+  const mouthPrompt = `You are WASI's payment agent for WhatsApp food ordering.
 
-  // Parse signals
-  const methodMatch = reply.match(/PAYMENT_METHOD:\s*(COD|JazzCash|Easypaisa|card)/);
-  const statusMatch = reply.match(/PAYMENT_STATUS:\s*(pending|initiated)/);
+CURRENT EXTRACTED STATE:
+Payment Method: ${extracted.paymentMethod || 'Not Chosen'}
+Order total: Rs.${orderTotal}
 
-  const paymentMethod = methodMatch ? methodMatch[1].trim() : null;
-  const paymentStatus = statusMatch ? statusMatch[1].trim() : 'pending';
+PAYMENT OPTIONS:
+${METHODS_STRING}
 
-  // Clean reply
-  const cleanReply = reply
-    .replace(/PAYMENT_METHOD:.*$/m, '')
-    .replace(/PAYMENT_STATUS:.*$/m, '')
-    .trim();
+RULES:
+- If a method isn't chosen, present options and ask customer to choose.
+- COD: collected at doorstep.
+- JazzCash/Easypaisa: restaurant sends payment request after confirmation.
+- Card: currently unavailable.
+- CRITICAL: NEVER summarize the user's order cart or total price in a formatted list. Another system handles that. Only talk about payment details.
+- If they chose a method, confirm it politely.
+
+${systemNotes}
+
+Reply in ${detectedLanguage}.`;
+
+  const cleanReply = await callLLM(mouthPrompt, conversationHistory, 200, false);
 
   return {
     reply: cleanReply,
-    paymentMethod,      // 'COD' | 'JazzCash' | 'Easypaisa' | 'card' | null
-    paymentStatus,      // 'pending' | 'initiated'
-    enabledMethods,
+    paymentMethod: extracted.paymentMethod,
+    paymentStatus: extracted.paymentStatus,
+    enabledMethods: getEnabledMethods(),
   };
 }
 
