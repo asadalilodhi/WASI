@@ -56,7 +56,6 @@ CRITICAL RULES:
     
     # 2. Build the Altered Summary
     summary = f"""⚠️ *RECEPTIONIST FEEDBACK*
-{receptionist_msg}
 
 📋 *ALTERED ORDER SUMMARY*
 
@@ -79,9 +78,12 @@ CRITICAL RULES:
     updates = {
         "cart_items": updated_cart,
         "order_status": "ORDERING",
-        "is_ordering_complete": False, # Force them back into the loop
         "messages": [{"role": "assistant", "content": summary}]
     }
+    
+    # Only force them back to the menu if their cart items were modified/removed
+    if updated_cart != cart_items:
+        updates["is_ordering_complete"] = False
     
     if constraint:
         new_notes = receptionist_notes.copy()

@@ -68,6 +68,12 @@ async function connectToWhatsApp(onReady) {
     if (!messageContent) return;
 
     const senderNumber = msg.key.remoteJid; // e.g., '1234567890@s.whatsapp.net'
+    
+    // Ignore group messages and broadcasts!
+    if (senderNumber.endsWith('@g.us') || senderNumber.endsWith('@broadcast')) {
+        console.log(`[WhatsApp] Ignored group message from ${senderNumber}`);
+        return;
+    }
     console.log(`\n💬 [WhatsApp] Received from ${senderNumber}: ${messageContent}`);
 
     try {

@@ -48,8 +48,7 @@ def call_llm(system_prompt: str, messages: list, model="gpt-4o", max_tokens=1000
         model=model,
         openai_api_key=os.environ.get("AIML_API_KEY", "dummy"),
         openai_api_base="https://api.aimlapi.com/v1",
-        max_tokens=max_tokens,
-        model_kwargs={"response_format": {"type": "json_object"}} if force_json else {}
+        max_tokens=max_tokens
     )
     
     # Construct Langchain messages
@@ -61,13 +60,24 @@ def call_llm(system_prompt: str, messages: list, model="gpt-4o", max_tokens=1000
             lc_messages.append(AIMessage(content=msg["content"]))
             
     try:
-        response = llm.invoke(lc_messages)
+        if force_json:
+            response = llm.bind(response_format={"type": "json_object"}).invoke(lc_messages)
+        else:
+            response = llm.invoke(lc_messages)
         if force_json:
             try:
-                return json.loads(response.content)
-            except Exception:
-                return {}
+                import re
+                content = response.content.strip()
+                match = re.search(r'\{.*\}', content, re.DOTALL)
+                if match:
+                    content = match.group(0)
+                parsed = json.loads(content)
+                return parsed
+            except Exception as e:
+                # Fallback: If it's not JSON, assume the LLM wrote a direct conversational response!
+                return {"reply_to_user": response.content.strip()}
         return response.content
     except Exception as e:
-        print(f"LLM API Error: {e}")
+        # Safely print the error type and basic message without printing full response.content
+        print(f"LLM API Error: {type(e).__name__} - {str(e)}")
         return {} if force_json else "Sorry, mujhe samajh nahi aya. Kya aap dobara bata sakte hain?"

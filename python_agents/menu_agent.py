@@ -26,24 +26,25 @@ Receptionist Notes: {receptionist_notes}
 
 Respond ONLY with a valid JSON object:
 {{
-    "updated_cart_items": [{{"name": "Zinger Burger", "qty": 1, "price": 350, "variant": null, "subtotal": 350}}],
-    "updated_in_progress_items": [{{"name": "Pizza", "qty": 1, "known_details": "Large", "missing_details": "Flavor (Fajita/Tikka)"}}],
-    "updated_pending_clarifications": ["Ask the user if they want Chicken Fajita or Chicken Tikka for their Large Pizza"],
+    "updated_cart_items": [{{"name": "Item Name", "qty": 1, "price": 100, "variant": "Large", "subtotal": 100}}],
+    "updated_in_progress_items": [{{"name": "Incomplete Item", "qty": 1, "known_details": "Medium", "missing_details": "Size (Regular/Large)"}}],
+    "updated_pending_clarifications": ["Ask the user for missing details"],
     "is_ordering_complete": false,
     "reply_to_user": "Your conversational response in Roman Urdu"
 }}
 
 CRITICAL RULES:
-1. "updated_cart_items" should contain the FULL final list of confirmed items. If the user adds something, append it. If the user modifies something (e.g. changing Coca Cola to Sprite, or 4-piece to 8-piece), update the item in the list. If they remove something, remove it from the list.
-2. If the user asks for an item NOT on the menu (e.g., Pepsi), DO NOT substitute it! Add a message to "reply_to_user" politely telling them what IS available.
-3. CRITICAL CONSTRAINT: You MUST strictly obey the Receptionist Notes. If a note explicitly says an item is out of stock or forbidden, you MUST NOT allow the user to add it back to the cart. Apologize and ask them to pick something else.
-4. DO NOT guess or default sizes or flavors for ANY item. If a menu item has multiple variants/sizes (e.g., Fries, Pizza, Drinks, Broast) and the user doesn't specify which one they want, you MUST add it to "updated_in_progress_items" and explicitly ask them for the missing detail.
-5. When asking the user to specify a missing detail (flavor, size, drink type), you MUST explicitly list the available options from the menu in parenthesis so they know what to choose from.
-6. If the user answers a question (e.g., "fajita"), look at "In-Progress Items". Combine their answer with the in-progress item. If it's now fully specified, move it to "updated_cart_items" and REMOVE it from "updated_in_progress_items".
+1. "updated_cart_items" MUST contain the FULL final list of confirmed items. If the user adds or completes something, APPEND it to this list. If the user modifies something, update it. DO NOT drop previously confirmed items.
+2. If the user asks for an item NOT on the menu, DO NOT substitute it! Add a message to "reply_to_user" politely telling them what IS available.
+3. CRITICAL CONSTRAINT: You MUST strictly obey the Receptionist Notes. If a note explicitly says an item is out of stock, you MUST NOT allow the user to add it.
+4. DO NOT guess sizes or flavors in JSON AND DO NOT GUESS IN THE TEXT REPLY. If an item has multiple variants/sizes and the user doesn't specify or provides an invalid size (like "Medium" for Fries which only has Regular/Large), you MUST add it to "updated_in_progress_items".
+5. CRITICAL: If an item is in "updated_in_progress_items", your "reply_to_user" MUST explicitly ask the user for the missing details. DO NOT confirm the item in the text reply! DO NOT default the size for them!
+6. If the user answers a question (e.g., "fajita"), look at "In-Progress Items". Combine their answer with the in-progress item. If it is now fully specified, you MUST add it to "updated_cart_items" and REMOVE it from "updated_in_progress_items".
 7. "updated_pending_clarifications" MUST carry over unresolved questions for any items still in "updated_in_progress_items".
-8. If the user sends a casual greeting (e.g., 'hi', 'salam') or trolls/asks unrelated questions, humor them in the first line (max 10-12 words), then gently ask them what they want to order or if they want to see the menu. DO NOT set `is_ordering_complete` to true.
-9. If the user explicitly says they are done ordering (e.g., "bus", "ji nahi", "done", "that's it"), set "is_ordering_complete" to true. AND in your "reply_to_user", you MUST explicitly ask them if they want "Delivery" or "Takeaway".
-10. If the user asks for the menu, you MUST output the EXACT full menu exactly as shown in the Live Menu above. Do NOT summarize it or hide any prices/sizes.
+8. If the user sends a casual greeting, humor them in the first line, then gently ask what they want to order. DO NOT set `is_ordering_complete` to true.
+9. If the user explicitly says they are done ordering, set "is_ordering_complete" to true. AND in your "reply_to_user", you MUST explicitly ask them if they want "Delivery" or "Takeaway".
+10. If the user asks for the menu, output the EXACT full menu. Do NOT summarize it.
+11. CRITICAL: "reply_to_user" MUST NEVER BE EMPTY or null. ALWAYS write a helpful conversational response in Roman Urdu.
 """
 
     recent_messages = messages[-5:] if len(messages) >= 5 else messages
@@ -51,7 +52,7 @@ CRITICAL RULES:
     
     updated_cart = result.get("updated_cart_items", cart_items)
     
-    reply = result.get("reply_to_user") or "Samajh nahi aya, kya aap menu se kuch order karna chahte hain?"
+    reply = result.get("reply_to_user") or "Maaf kijiye, system mein abhi thora masla hai. Kya aap apna message dobara bhej sakte hain?"
     
     if updated_cart:
         cart_str = "\n".join([f"• {i.get('qty')}x {i.get('name')} {i.get('variant') or ''} (Rs. {i.get('subtotal') or (i.get('price',0)*i.get('qty',1))})" for i in updated_cart])
