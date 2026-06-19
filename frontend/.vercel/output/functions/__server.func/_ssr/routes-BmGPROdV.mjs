@@ -7,7 +7,8 @@ import { t as twMerge } from "../_libs/tailwind-merge.mjs";
 import { n as RadioGroupIndicator, r as RadioGroupItem$1, t as RadioGroup$1 } from "../_libs/@radix-ui/react-radio-group+[...].mjs";
 import { t as Root } from "../_libs/radix-ui__react-label.mjs";
 import { t as Markdown } from "../_libs/react-markdown+[...].mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-BG5DWYKM.js
+import { t as createClient } from "../_libs/supabase__supabase-js.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-BmGPROdV.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function cn(...inputs) {
@@ -179,93 +180,8 @@ var AccordionContent = import_react.forwardRef(({ className, children, ...props 
 	})
 }));
 AccordionContent.displayName = Content2.displayName;
-var initialOrders = [
-	{
-		id: "WA-00847",
-		customer: "Muhammad Bilal",
-		phone: "+92 300 1234567",
-		address: "House 12, Block 5, Gulshan-e-Iqbal, Karachi",
-		type: "DELIVERY",
-		payment: "COD",
-		items: [
-			{
-				qty: 2,
-				name: "Zinger Burger",
-				notes: "extra spicy, no onions",
-				price: 700
-			},
-			{
-				qty: 1,
-				name: "Large Fries",
-				price: 220
-			},
-			{
-				qty: 1,
-				name: "Coke 500ml",
-				price: 100
-			}
-		],
-		deliveryFee: 100,
-		arrivedMinutesAgo: 2,
-		status: "pending"
-	},
-	{
-		id: "WA-00846",
-		customer: "Ayesha Khan",
-		phone: "+92 333 9876543",
-		address: "Flat 4B, Sea Breeze Plaza, Clifton, Karachi",
-		type: "DELIVERY",
-		payment: "COD",
-		items: [{
-			qty: 1,
-			name: "Chicken Tikka Pizza (Large)",
-			price: 1450
-		}, {
-			qty: 2,
-			name: "Garlic Bread",
-			price: 480
-		}],
-		deliveryFee: 150,
-		arrivedMinutesAgo: 6,
-		status: "pending"
-	},
-	{
-		id: "WA-00845",
-		customer: "Hassan Tariq",
-		phone: "+92 321 5550199",
-		type: "TAKEAWAY",
-		payment: "CARD",
-		items: [{
-			qty: 1,
-			name: "Beef Shawarma Platter",
-			notes: "no garlic sauce",
-			price: 650
-		}],
-		deliveryFee: 0,
-		arrivedMinutesAgo: 1,
-		status: "pending"
-	},
-	{
-		id: "WA-00844",
-		customer: "Fatima Noor",
-		phone: "+92 345 1112233",
-		address: "C-22, Phase 6, DHA, Karachi",
-		type: "DELIVERY",
-		payment: "COD",
-		items: [{
-			qty: 3,
-			name: "Chicken Roll",
-			price: 750
-		}, {
-			qty: 2,
-			name: "Mint Margarita",
-			price: 360
-		}],
-		deliveryFee: 120,
-		arrivedMinutesAgo: 12,
-		status: "confirmed"
-	}
-];
+var supabase = createClient("https://jeettuybmkqsxoyjwvxo.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImplZXR0dXlibWtxc3hveWp3dnhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MDY4MTIsImV4cCI6MjA5NzM4MjgxMn0.tUK8f2y54hC4tJoQnGWXrNpRH_4ZpMvAe7D0tPrX0sM");
+var initialOrders = [];
 var rejectReasons = [
 	{
 		value: "stock",
@@ -352,29 +268,30 @@ function Dashboard() {
 	(0, import_react.useEffect)(() => {
 		const fetchOrders = async () => {
 			try {
-				const data = await (await fetch(`${BACKEND_URL}/api/orders`, { headers: { "ngrok-skip-browser-warning": "true" } })).json();
-				const parsedOrders = Object.keys(data).map((sessionId) => {
-					const o = data[sessionId];
+				const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
+				if (error) throw error;
+				if (!data) return;
+				const parsedOrders = data.map((o) => {
 					let uiStatus = "pending";
 					if (o.status === "CONFIRMED") uiStatus = "confirmed";
 					if (o.status === "REVISION_NEEDED") uiStatus = "rejected";
 					return {
-						id: sessionId,
-						customer: o.customerName || "Unknown",
-						phone: o.phoneNumber || sessionId,
-						address: o.deliveryAddress,
-						type: o.orderType || "DELIVERY",
-						payment: o.paymentMethod || "COD",
+						id: o.id,
+						customer: o.customer || "Unknown",
+						phone: o.phone || o.id,
+						address: o.address,
+						type: o.type || "DELIVERY",
+						payment: o.payment || "COD",
 						items: o.items || [],
-						deliveryFee: o.orderType === "DELIVERY" ? 100 : 0,
-						arrivedMinutesAgo: 0,
+						deliveryFee: o.deliveryFee || 0,
+						arrivedMinutesAgo: o.arrivedMinutesAgo || 0,
 						status: uiStatus
 					};
 				});
 				setOrders(parsedOrders);
 				if (!selectedId && parsedOrders.length > 0) setSelectedId(parsedOrders[0].id);
 			} catch (e) {
-				console.error("Failed to fetch orders", e);
+				console.error("Failed to fetch orders from Supabase", e);
 			}
 		};
 		fetchOrders();
@@ -392,10 +309,7 @@ function Dashboard() {
 	async function handleConfirm() {
 		if (!selected) return;
 		try {
-			await fetch(`${BACKEND_URL}/api/orders/${selected.id}/confirm`, {
-				method: "POST",
-				headers: { "ngrok-skip-browser-warning": "true" }
-			});
+			await supabase.from("orders").update({ status: "CONFIRMED" }).eq("id", selected.id);
 			setOrders((prev) => prev.map((o) => o.id === selected.id ? {
 				...o,
 				status: "confirmed"
@@ -411,14 +325,10 @@ function Dashboard() {
 		try {
 			const reasonText = rejectReason === "other" ? rejectOther : rejectReasons.find((r) => r.value === rejectReason)?.label;
 			const finalFeedback = notes ? `${reasonText} - Notes: ${notes}` : reasonText;
-			await fetch(`${BACKEND_URL}/api/orders/${selected.id}/feedback`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					"ngrok-skip-browser-warning": "true"
-				},
-				body: JSON.stringify({ feedback: finalFeedback })
-			});
+			await supabase.from("orders").update({
+				status: "REVISION_NEEDED",
+				notes: finalFeedback
+			}).eq("id", selected.id);
 			setOrders((prev) => prev.map((o) => o.id === selected.id ? {
 				...o,
 				status: "rejected"
@@ -431,14 +341,7 @@ function Dashboard() {
 	async function handleSendNote(noteText) {
 		if (!selected) return;
 		try {
-			await fetch(`${BACKEND_URL}/api/orders/${selected.id}/note`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					"ngrok-skip-browser-warning": "true"
-				},
-				body: JSON.stringify({ note: noteText })
-			});
+			await supabase.from("orders").update({ notes: noteText }).eq("id", selected.id);
 			setNotes("");
 			setActivePill(null);
 		} catch (e) {
