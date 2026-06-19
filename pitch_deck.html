@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WASI Pitch Deck</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+        
+        body, html {
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+
+        .slide {
+            width: 1920px;
+            height: 1080px;
+            box-sizing: border-box;
+            padding: 100px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            page-break-after: always;
+            position: relative;
+            overflow: hidden;
+            background: radial-gradient(circle at top right, #1e293b, #0f172a);
+        }
+
+        /* Print formatting */
+        @media print {
+            @page {
+                size: 1920px 1080px;
+                margin: 0;
+            }
+            body {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+        }
+
+        h1 {
+            font-size: 120px;
+            font-weight: 800;
+            margin: 0 0 40px 0;
+            background: linear-gradient(to right, #10b981, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            line-height: 1.1;
+        }
+
+        h2 {
+            font-size: 80px;
+            font-weight: 600;
+            margin: 0 0 30px 0;
+            color: #cbd5e1;
+        }
+
+        p, li {
+            font-size: 45px;
+            font-weight: 300;
+            line-height: 1.6;
+            margin-bottom: 30px;
+            color: #94a3b8;
+        }
+
+        ul {
+            padding-left: 60px;
+        }
+
+        li::marker {
+            color: #10b981;
+        }
+
+        .accent {
+            color: #10b981;
+            font-weight: 600;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 80px;
+            align-items: center;
+        }
+
+        /* Decorative elements */
+        .glow {
+            position: absolute;
+            width: 800px;
+            height: 800px;
+            background: rgba(16, 185, 129, 0.1);
+            filter: blur(150px);
+            border-radius: 50%;
+            z-index: 0;
+        }
+        
+        .content {
+            z-index: 1;
+            position: relative;
+        }
+
+        .tag {
+            display: inline-block;
+            background: rgba(59, 130, 246, 0.2);
+            border: 2px solid #3b82f6;
+            padding: 10px 30px;
+            border-radius: 50px;
+            font-size: 35px;
+            color: #60a5fa;
+            margin-bottom: 40px;
+            font-weight: 600;
+        }
+        
+        .footer {
+            position: absolute;
+            bottom: 60px;
+            left: 100px;
+            right: 100px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 28px;
+            color: #475569;
+            font-weight: 600;
+            border-top: 2px solid #1e293b;
+            padding-top: 30px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Slide 1: Title -->
+    <div class="slide">
+        <div class="glow" style="top: -200px; right: -200px;"></div>
+        <div class="content">
+            <span class="tag">Hackathon Submission</span>
+            <h1>WASI</h1>
+            <h2>The Multi-Agent AI Ordering Platform</h2>
+            <p>Transforming WhatsApp into an intelligent, <br>conversational storefront powered by Band AI Cloud.</p>
+        </div>
+        <div class="footer">
+            <span>Powered by Groq & LangGraph</span>
+            <span>Slide 1</span>
+        </div>
+    </div>
+
+    <!-- Slide 2: The Problem -->
+    <div class="slide">
+        <div class="content">
+            <h1 style="font-size: 80px;">The Problem with Food Delivery</h1>
+            <div class="grid-2">
+                <div>
+                    <ul>
+                        <li><span class="accent">Traditional Chatbots Fail:</span> Rigid decision trees cannot handle how humans actually speak.</li>
+                        <li><span class="accent">App Fatigue:</span> Customers don't want to download a new app for every local restaurant.</li>
+                        <li><span class="accent">Language Barriers:</span> Existing bots fail completely at understanding mixed languages like Roman-Urdu.</li>
+                    </ul>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.8); border: 2px solid #334155; padding: 50px; border-radius: 30px;">
+                    <p style="margin:0; font-style: italic; font-size: 40px; color: #f8fafc;">"Samajh nahi aya, kya aap menu se kuch order karna chahte hain?"</p>
+                    <p style="margin-top:20px; font-size: 30px; color: #ef4444;">- Every bad chatbot ever</p>
+                </div>
+            </div>
+        </div>
+        <div class="footer">
+            <span>WASI</span>
+            <span>Slide 2</span>
+        </div>
+    </div>
+
+    <!-- Slide 3: Our Solution -->
+    <div class="slide">
+        <div class="glow" style="bottom: -200px; left: -200px; background: rgba(59, 130, 246, 0.1);"></div>
+        <div class="content">
+            <h1 style="font-size: 80px;">The Solution: WASI</h1>
+            <p>A native WhatsApp experience powered by a <span class="accent">Mesh of Specialized AI Agents</span>.</p>
+            <br>
+            <div class="grid-2" style="gap: 40px;">
+                <div style="background: rgba(30, 41, 59, 0.5); padding: 40px; border-radius: 20px;">
+                    <h3 style="font-size: 50px; margin: 0 0 20px 0; color: #f8fafc;">🗣️ Natural Language</h3>
+                    <p style="font-size: 35px;">Understands messy Roman-Urdu, slang, and implied context.</p>
+                </div>
+                <div style="background: rgba(30, 41, 59, 0.5); padding: 40px; border-radius: 20px;">
+                    <h3 style="font-size: 50px; margin: 0 0 20px 0; color: #f8fafc;">🔄 Dynamic State</h3>
+                    <p style="font-size: 35px;">AI maps conversation directly to strict JSON database schemas.</p>
+                </div>
+                <div style="background: rgba(30, 41, 59, 0.5); padding: 40px; border-radius: 20px;">
+                    <h3 style="font-size: 50px; margin: 0 0 20px 0; color: #f8fafc;">⚡ Multi-Agent</h3>
+                    <p style="font-size: 35px;">Menu Agent, Delivery Agent, and Returning User Agent working together.</p>
+                </div>
+                <div style="background: rgba(30, 41, 59, 0.5); padding: 40px; border-radius: 20px;">
+                    <h3 style="font-size: 50px; margin: 0 0 20px 0; color: #f8fafc;">👀 Human-in-the-loop</h3>
+                    <p style="font-size: 35px;">A live React dashboard for receptionists to step in when needed.</p>
+                </div>
+            </div>
+        </div>
+        <div class="footer">
+            <span>WASI</span>
+            <span>Slide 3</span>
+        </div>
+    </div>
+
+    <!-- Slide 4: Architecture -->
+    <div class="slide">
+        <div class="content">
+            <h1 style="font-size: 80px;">Architecture & Tech Stack</h1>
+            <div class="grid-2">
+                <div>
+                    <ul>
+                        <li><span class="accent">Band AI Cloud:</span> Central telemetry, observability, and webhook orchestration.</li>
+                        <li><span class="accent">LangGraph (Python):</span> State machine defining agent workflows and memory.</li>
+                        <li><span class="accent">Groq / AIML API:</span> Lightning-fast LLM inference locking AI into strict JSON Mode.</li>
+                        <li><span class="accent">React & Vite:</span> Live dashboard for restaurant receptionists.</li>
+                    </ul>
+                </div>
+                <div style="text-align: center;">
+                    <div style="border: 4px solid #10b981; border-radius: 50%; width: 400px; height: 400px; display: flex; align-items: center; justify-content: center; margin: 0 auto; background: rgba(16, 185, 129, 0.1);">
+                        <h2 style="margin:0; font-size: 60px;">Agentic<br>Mesh</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="footer">
+            <span>WASI</span>
+            <span>Slide 4</span>
+        </div>
+    </div>
+
+    <!-- Slide 5: Conclusion -->
+    <div class="slide">
+        <div class="glow" style="top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(16, 185, 129, 0.15);"></div>
+        <div class="content" style="text-align: center;">
+            <span class="tag">Ready for Production</span>
+            <h1 style="margin-bottom: 20px;">Thank You!</h1>
+            <h2>Welcome to the future of conversational commerce.</h2>
+            <br><br><br>
+            <p style="font-size: 40px;"><span class="accent">Demo Video:</span> Attached in submission</p>
+            <p style="font-size: 40px;"><span class="accent">Repository:</span> Open source & available for review</p>
+        </div>
+        <div class="footer">
+            <span>WASI</span>
+            <span>Slide 5</span>
+        </div>
+    </div>
+
+</body>
+</html>
