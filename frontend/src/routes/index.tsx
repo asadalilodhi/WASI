@@ -166,7 +166,7 @@ function orderTotal(o: Order) {
   return o.items.reduce((s, i) => s + i.price, 0) + o.deliveryFee;
 }
 
-const BACKEND_URL = "http://localhost:3000";
+const BACKEND_URL = "https://wasi-api.loca.lt";
 
 function Dashboard() {
   const [orders, setOrders] = useState<Order[]>(initialOrders);
@@ -193,7 +193,7 @@ function Dashboard() {
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const res = await fetch(`${BACKEND_URL}/api/orders`);
+        const res = await fetch(`${BACKEND_URL}/api/orders`, { headers: { "Bypass-Tunnel-Reminder": "true" } });
         const data = await res.json();
         
         const parsedOrders: Order[] = Object.keys(data).map(sessionId => {
@@ -242,7 +242,7 @@ function Dashboard() {
   async function handleConfirm() {
     if (!selected) return;
     try {
-      await fetch(`${BACKEND_URL}/api/orders/${selected.id}/confirm`, { method: "POST" });
+      await fetch(`${BACKEND_URL}/api/orders/${selected.id}/confirm`, { method: "POST", headers: { "Bypass-Tunnel-Reminder": "true" } });
       setOrders((prev) => prev.map((o) => (o.id === selected.id ? { ...o, status: "confirmed" } : o)));
       setShowRemove(false);
       setTimeout(() => setShowRemove(true), 3000);
@@ -259,7 +259,7 @@ function Dashboard() {
       
       await fetch(`${BACKEND_URL}/api/orders/${selected.id}/feedback`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Bypass-Tunnel-Reminder": "true" },
         body: JSON.stringify({ feedback: finalFeedback })
       });
       setOrders((prev) => prev.map((o) => (o.id === selected.id ? { ...o, status: "rejected" } : o)));
@@ -274,7 +274,7 @@ function Dashboard() {
     try {
       await fetch(`${BACKEND_URL}/api/orders/${selected.id}/note`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Bypass-Tunnel-Reminder": "true" },
         body: JSON.stringify({ note: noteText })
       });
       setNotes(""); // clear note text box
@@ -293,7 +293,7 @@ function Dashboard() {
     setShowInsights(true);
     setLoadingInsights(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/analytics`);
+      const res = await fetch(`${BACKEND_URL}/api/analytics`, { headers: { "Bypass-Tunnel-Reminder": "true" } });
       const data = await res.json();
       setInsightsReport(data.report || "Failed to generate report.");
     } catch (e) {
