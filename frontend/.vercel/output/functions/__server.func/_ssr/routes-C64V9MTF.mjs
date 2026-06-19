@@ -1,4 +1,4 @@
-import { i as __toESM } from "../_runtime.mjs";
+import { r as __toESM } from "../_runtime.mjs";
 import { a as Trigger2, i as Root2, n as Header, r as Item, t as Content2, v as require_jsx_runtime, y as require_react } from "../_libs/@radix-ui/react-accordion+[...].mjs";
 import { a as Plus, c as MapPin, d as ChevronDown, f as Check, i as Search, l as Funnel, n as Sparkles, o as Pencil, p as Bell, r as Send, s as MessageCircle, t as X, u as Circle } from "../_libs/lucide-react.mjs";
 import { a as DialogOverlay$1, i as DialogDescription$1, n as DialogClose, o as DialogPortal$1, r as DialogContent$1, s as DialogTitle$1, t as Dialog$1 } from "../_libs/@radix-ui/react-dialog+[...].mjs";
@@ -6,9 +6,8 @@ import { n as clsx, t as cva } from "../_libs/class-variance-authority+clsx.mjs"
 import { t as twMerge } from "../_libs/tailwind-merge.mjs";
 import { n as RadioGroupIndicator, r as RadioGroupItem$1, t as RadioGroup$1 } from "../_libs/@radix-ui/react-radio-group+[...].mjs";
 import { t as Root } from "../_libs/radix-ui__react-label.mjs";
-import { t as Markdown } from "../_libs/react-markdown+[...].mjs";
 import { t as createClient } from "../_libs/supabase__supabase-js.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-CYjCxBF2.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-C64V9MTF.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function cn(...inputs) {
@@ -875,8 +874,8 @@ function Dashboard() {
 									children: "AI is analyzing all orders..."
 								})]
 							}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								className: "prose prose-sm prose-indigo max-w-none prose-headings:mb-2 prose-p:mt-0",
-								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Markdown, { children: insightsReport })
+								className: "prose prose-sm prose-indigo max-w-none prose-headings:mb-2 prose-p:mt-0 whitespace-pre-wrap",
+								children: insightsReport
 							})
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(DialogFooter, { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {

@@ -1,4 +1,4 @@
-import { i as __toESM } from "../_runtime.mjs";
+import { r as __toESM } from "../_runtime.mjs";
 import { l as Primitive, v as require_jsx_runtime, y as require_react } from "./@radix-ui/react-accordion+[...].mjs";
 //#region node_modules/@radix-ui/react-label/dist/index.mjs
 var import_react = /* @__PURE__ */ __toESM(require_react(), 1);

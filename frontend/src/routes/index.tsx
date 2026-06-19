@@ -20,7 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import ReactMarkdown from 'react-markdown';
+
 import { supabase } from '../lib/supabase';
 
 export const Route = createFileRoute("/")({
@@ -571,8 +571,8 @@ function Dashboard() {
                 <p className="text-slate-500 animate-pulse text-sm">AI is analyzing all orders...</p>
               </div>
             ) : (
-              <div className="prose prose-sm prose-indigo max-w-none prose-headings:mb-2 prose-p:mt-0">
-                <ReactMarkdown>{insightsReport}</ReactMarkdown>
+              <div className="prose prose-sm prose-indigo max-w-none prose-headings:mb-2 prose-p:mt-0 whitespace-pre-wrap">
+                {insightsReport}
               </div>
             )}
           </div>
