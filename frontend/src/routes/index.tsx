@@ -120,7 +120,7 @@ function Dashboard() {
   const [activePill, setActivePill] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("stock");
   const [rejectOther, setRejectOther] = useState("");
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState<Date | null>(null);
   const [showRemove, setShowRemove] = useState(false);
   
   // AI Insights State
@@ -129,6 +129,7 @@ function Dashboard() {
   const [loadingInsights, setLoadingInsights] = useState(false);
 
   useEffect(() => {
+    setNow(new Date());
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
@@ -264,8 +265,8 @@ function Dashboard() {
 
         <div className="hidden md:flex items-center gap-6 text-slate-300 text-sm">
           <div className="flex items-center gap-3">
-            <span className="font-mono font-semibold text-white">{now.toLocaleTimeString("en-GB")}</span>
-            <span className="text-slate-400">{now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span>
+            <span className="font-mono font-semibold text-white">{now ? now.toLocaleTimeString("en-GB") : ""}</span>
+            <span className="text-slate-400">{now ? now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : ""}</span>
           </div>
           <div className="flex items-center gap-3 text-xs">
             <span className="px-2 py-1 rounded-md bg-slate-800">Today: <b className="text-white">{stats.total}</b></span>

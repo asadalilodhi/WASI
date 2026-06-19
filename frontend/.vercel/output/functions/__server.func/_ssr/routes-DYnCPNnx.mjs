@@ -8,7 +8,7 @@ import { n as RadioGroupIndicator, r as RadioGroupItem$1, t as RadioGroup$1 } fr
 import { t as Root } from "../_libs/radix-ui__react-label.mjs";
 import { t as Markdown } from "../_libs/react-markdown+[...].mjs";
 import { t as createClient } from "../_libs/supabase__supabase-js.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-BmGPROdV.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-DYnCPNnx.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function cn(...inputs) {
@@ -256,12 +256,13 @@ function Dashboard() {
 	const [activePill, setActivePill] = (0, import_react.useState)(null);
 	const [rejectReason, setRejectReason] = (0, import_react.useState)("stock");
 	const [rejectOther, setRejectOther] = (0, import_react.useState)("");
-	const [now, setNow] = (0, import_react.useState)(/* @__PURE__ */ new Date());
+	const [now, setNow] = (0, import_react.useState)(null);
 	const [showRemove, setShowRemove] = (0, import_react.useState)(false);
 	const [showInsights, setShowInsights] = (0, import_react.useState)(false);
 	const [insightsReport, setInsightsReport] = (0, import_react.useState)("");
 	const [loadingInsights, setLoadingInsights] = (0, import_react.useState)(false);
 	(0, import_react.useEffect)(() => {
+		setNow(/* @__PURE__ */ new Date());
 		const t = setInterval(() => setNow(/* @__PURE__ */ new Date()), 1e3);
 		return () => clearInterval(t);
 	}, []);
@@ -404,15 +405,15 @@ function Dashboard() {
 							className: "flex items-center gap-3",
 							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 								className: "font-mono font-semibold text-white",
-								children: now.toLocaleTimeString("en-GB")
+								children: now ? now.toLocaleTimeString("en-GB") : ""
 							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 								className: "text-slate-400",
-								children: now.toLocaleDateString("en-GB", {
+								children: now ? now.toLocaleDateString("en-GB", {
 									weekday: "long",
 									day: "numeric",
 									month: "long",
 									year: "numeric"
-								})
+								}) : ""
 							})]
 						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "flex items-center gap-3 text-xs",
