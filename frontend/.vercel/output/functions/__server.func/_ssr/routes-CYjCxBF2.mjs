@@ -8,7 +8,7 @@ import { n as RadioGroupIndicator, r as RadioGroupItem$1, t as RadioGroup$1 } fr
 import { t as Root } from "../_libs/radix-ui__react-label.mjs";
 import { t as Markdown } from "../_libs/react-markdown+[...].mjs";
 import { t as createClient } from "../_libs/supabase__supabase-js.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-DYnCPNnx.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-CYjCxBF2.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function cn(...inputs) {
@@ -180,7 +180,7 @@ var AccordionContent = import_react.forwardRef(({ className, children, ...props 
 	})
 }));
 AccordionContent.displayName = Content2.displayName;
-var supabase = createClient("https://jeettuybmkqsxoyjwvxo.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImplZXR0dXlibWtxc3hveWp3dnhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MDY4MTIsImV4cCI6MjA5NzM4MjgxMn0.tUK8f2y54hC4tJoQnGWXrNpRH_4ZpMvAe7D0tPrX0sM");
+var supabase = createClient("https://jeettuybmkqsxoyjwvxo.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImplZXR0dXlibWtxc3hveWp3dnhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MDY4MTIsImV4cCI6MjA5NzM4MjgxMn0.tUK8f2y54hC4tJoQnGWXrNpRH_4ZpMvAe7D0tPrX0sM", { auth: { persistSession: typeof window !== "undefined" } });
 var initialOrders = [];
 var rejectReasons = [
 	{
