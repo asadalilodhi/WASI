@@ -45,6 +45,7 @@ CRITICAL RULES:
 9. If the user explicitly says they are done ordering, set "is_ordering_complete" to true. AND in your "reply_to_user", you MUST explicitly ask them if they want "Delivery" or "Takeaway".
 10. If the user asks for the menu, output the EXACT full menu. Do NOT summarize it.
 11. CRITICAL: "reply_to_user" MUST NEVER BE EMPTY or null. ALWAYS write a helpful conversational response in Roman Urdu.
+12. CRITICAL: If the user simply says "yes", "ok", "done", or confirms their order, DO NOT add duplicate items to the cart. Only append NEW items to updated_cart_items if they explicitly ask for them!
 """
 
     recent_messages = messages[-5:] if len(messages) >= 5 else messages
