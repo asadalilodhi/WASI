@@ -193,7 +193,7 @@ function Dashboard() {
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const res = await fetch(`${BACKEND_URL}/api/orders`, { headers: { "Bypass-Tunnel-Reminder": "true" } });
+        const res = await fetch(`${BACKEND_URL}/api/orders`, { headers: { "ngrok-skip-browser-warning": "true" } });
         const data = await res.json();
         
         const parsedOrders: Order[] = Object.keys(data).map(sessionId => {
@@ -242,7 +242,7 @@ function Dashboard() {
   async function handleConfirm() {
     if (!selected) return;
     try {
-      await fetch(`${BACKEND_URL}/api/orders/${selected.id}/confirm`, { method: "POST", headers: { "Bypass-Tunnel-Reminder": "true" } });
+      await fetch(`${BACKEND_URL}/api/orders/${selected.id}/confirm`, { method: "POST", headers: { "ngrok-skip-browser-warning": "true" } });
       setOrders((prev) => prev.map((o) => (o.id === selected.id ? { ...o, status: "confirmed" } : o)));
       setShowRemove(false);
       setTimeout(() => setShowRemove(true), 3000);
@@ -259,7 +259,7 @@ function Dashboard() {
       
       await fetch(`${BACKEND_URL}/api/orders/${selected.id}/feedback`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Bypass-Tunnel-Reminder": "true" },
+        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
         body: JSON.stringify({ feedback: finalFeedback })
       });
       setOrders((prev) => prev.map((o) => (o.id === selected.id ? { ...o, status: "rejected" } : o)));
@@ -274,7 +274,7 @@ function Dashboard() {
     try {
       await fetch(`${BACKEND_URL}/api/orders/${selected.id}/note`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Bypass-Tunnel-Reminder": "true" },
+        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
         body: JSON.stringify({ note: noteText })
       });
       setNotes(""); // clear note text box
@@ -293,7 +293,7 @@ function Dashboard() {
     setShowInsights(true);
     setLoadingInsights(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/analytics`, { headers: { "Bypass-Tunnel-Reminder": "true" } });
+      const res = await fetch(`${BACKEND_URL}/api/analytics`, { headers: { "ngrok-skip-browser-warning": "true" } });
       const data = await res.json();
       setInsightsReport(data.report || "Failed to generate report.");
     } catch (e) {
