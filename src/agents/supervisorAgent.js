@@ -15,12 +15,14 @@ const { processMessage,
 const { handleMenuQuery }        = require('./menuAgent');
 const { handleOrderMessage,
         addItemsToCart,
+        removeItemFromCart,
         getCartSummary,
         submitOrder,
         getOrder }               = require('./orderAgent');
 const { formatOrderSummary }     = require('./orderUtils');
 const { handleDeliveryMessage }  = require('./deliveryAgent');
 const { handlePaymentMessage }   = require('./paymentAgent');
+const { handleProfileMessage }   = require('./profileAgent');
 const { composeTemplate,
         composeAIMessage,
         sendMessage }            = require('./notificationAgent');
@@ -54,11 +56,34 @@ async function smartTranslate(text, toLanguage) {
 //  Replaces LLM call for "ORDERING vs DELIVERY" classification
 //  Saves 1-3 seconds per message in ORDERING state
 // ─────────────────────────────────────────────────────────────
-const MENU_KEYWORDS = /\b(burger|zinger|broast|fries|chips|coke|drink|menu|add|aur|chahiye|pepsi|sprite|piece|pieces|wala|kardo|karden|de|do|\d)\b/i;
+const MENU_KEYWORDS = /\b(burger|zinger|broast|fries|chips|coke|drink|pepsi|sprite|menu|add|remove|hata|hatao|daal|nikal)\b/i;
 
 function classifyIntent(message) {
   if (MENU_KEYWORDS.test(message)) return 'ORDERING';
-  return 'DELIVERY';
+  return 'OTHER';
+}
+
+// ─────────────────────────────────────────────────────────────
+//  CHANGE INTENT DETECTION (Used at Step F)
+// ─────────────────────────────────────────────────────────────
+async function classifyChangeIntent(message) {
+  const prompt = `Classify what the user wants to change in their order based on their message.
+Message: "${message}"
+Options:
+- menu (adding, removing, or changing food items/drinks)
+- address (changing delivery location)
+- payment (changing payment method)
+- name (changing their name)
+- phone (changing their phone number)
+- none (just saying no, wait, or unclear)
+
+Output ONLY the exact option name in lowercase, nothing else.`;
+  try {
+    const raw = await callLLM(prompt, [], 20, false);
+    return raw.trim().toLowerCase();
+  } catch (e) {
+    return 'none';
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -89,7 +114,8 @@ async function handleIncomingMessage(phoneNumber, rawMessage, tenantId = 'defaul
   // ── Step 2: Touch session ────────────────────────────────────
   touchSession(sessionId, async (expiredSession) => {
     const msg = composeTemplate('SESSION_EXPIRED');
-    sendMessage(expiredSession.phoneNumber, msg);
+    const expiredOrder = getOrder(expiredSession.sessionId);
+    sendMessage(expiredOrder?.phoneNumber || expiredSession.phoneNumber, msg);
   });
 
   // ── Step 3: Detect language ──────────────────────────────────
@@ -121,7 +147,8 @@ async function handleIncomingMessage(phoneNumber, rawMessage, tenantId = 'defaul
       isReturning ? 'WELCOME_BACK' : 'WELCOME_NEW',
       { customerName, restaurantName }
     );
-    sendMessage(phoneNumber, otpMsg);
+    const targetPhone = (getOrder(sessionId) || {}).phoneNumber || phoneNumber;
+    sendMessage(targetPhone, otpMsg);
 
     const reply = await smartTranslate(
       `${welcomeMsg}\n\nPlease enter the OTP sent to your WhatsApp to verify your number.`,
@@ -186,7 +213,7 @@ async function handleIncomingMessage(phoneNumber, rawMessage, tenantId = 'defaul
     // STEP A.0: Pending clarifications → ALWAYS route back to Menu Agent
     if (order.pendingClarifications && order.pendingClarifications.length > 0) {
       const currentCart = order.items || [];
-      const menuResult = await handleMenuQuery(history, currentCart, currentLanguage, order.pendingClarifications);
+      const menuResult = await handleMenuQuery(history, currentCart, currentLanguage, order.pendingClarifications, order.receptionistNotes);
       processMenuResult(menuResult);
       console.log(`  ⏱️  [Supervisor] Turn completed in ${Date.now() - turnStart}ms`);
       return { reply: menuResult.reply, sessionId, orderSubmitted: false, order: getOrder(sessionId) };
@@ -195,7 +222,7 @@ async function handleIncomingMessage(phoneNumber, rawMessage, tenantId = 'defaul
     // STEP A: Cart empty → Menu Agent
     if (order.items.length === 0) {
       const currentCart = order.items || [];
-      const menuResult = await handleMenuQuery(history, currentCart, currentLanguage);
+      const menuResult = await handleMenuQuery(history, currentCart, currentLanguage, [], order.receptionistNotes);
       processMenuResult(menuResult);
       console.log(`  ⏱️  [Supervisor] Turn completed in ${Date.now() - turnStart}ms`);
       return { reply: menuResult.reply, sessionId, orderSubmitted: false, order: getOrder(sessionId) };
@@ -208,7 +235,7 @@ async function handleIncomingMessage(phoneNumber, rawMessage, tenantId = 'defaul
 
       if (intent === 'ORDERING') {
         const currentCart = getOrder(sessionId).items || [];
-        const menuResult = await handleMenuQuery(history, currentCart, currentLanguage);
+        const menuResult = await handleMenuQuery(history, currentCart, currentLanguage, [], order.receptionistNotes);
         processMenuResult(menuResult);
         console.log(`  ⏱️  [Supervisor] Turn completed in ${Date.now() - turnStart}ms`);
         return { reply: menuResult.reply, sessionId, orderSubmitted: false, order: getOrder(sessionId) };
@@ -244,12 +271,24 @@ async function handleIncomingMessage(phoneNumber, rawMessage, tenantId = 'defaul
       return { reply: deliveryResult.reply, sessionId, orderSubmitted: false, order };
     }
 
-    // STEP C: No payment → Payment Agent (inject canonical summary)
+    // STEP C: No payment → Payment Agent (inject canonical summary and notes)
     if (!order.paymentMethod) {
-      // Inject the canonical order summary so the payment agent shows correct total
-      const summaryNote = { role: 'system', content: `CURRENT ORDER STATE (use these numbers exactly):\n${formatOrderSummary(order)}` };
-      const paymentHistory = [...history, summaryNote];
-      const paymentResult = await handlePaymentMessage(paymentHistory, order.totalPrice, currentLanguage);
+      // OPTIMIZATION: Check if user wants to change cart items instead of paying
+      const intent = classifyIntent(englishMessage);
+      if (intent === 'ORDERING') {
+        const currentCart = getOrder(sessionId).items || [];
+        const menuResult = await handleMenuQuery(history, currentCart, currentLanguage, [], order.receptionistNotes);
+        processMenuResult(menuResult);
+        console.log(`  ⏱️  [Supervisor] Turn completed in ${Date.now() - turnStart}ms`);
+        return { reply: menuResult.reply, sessionId, orderSubmitted: false, order: getOrder(sessionId) };
+      }
+
+      const notesStr = (order.receptionistNotes && order.receptionistNotes.length > 0) 
+        ? `\nCRITICAL CONSTRAINTS FROM RECEPTIONIST:\n${order.receptionistNotes.map(n => `- ${n}`).join('\n')}\nIf the user requests a method that is forbidden by these constraints, YOU MUST DENY IT.` 
+        : '';
+      const summaryNote = `CURRENT ORDER STATE (use these numbers exactly):\n${formatOrderSummary(order)}${notesStr}`;
+      
+      const paymentResult = await handlePaymentMessage(history, order.totalPrice + (order.deliveryFee || 0), currentLanguage, summaryNote);
       if (paymentResult.paymentMethod) {
         order.paymentMethod = paymentResult.paymentMethod;
         order.paymentStatus = paymentResult.paymentStatus;
@@ -262,65 +301,62 @@ async function handleIncomingMessage(phoneNumber, rawMessage, tenantId = 'defaul
     }
 
     // ────────────────────────────────────────────────────────
-    // STEPS D-G: Deterministic flow — NO LLM calls.
-    // Name, phone, summary display, and confirmation are all
-    // handled by code. This eliminates hallucination entirely.
+    // STEPS D-E: Generative flow for Profile collection
     // ────────────────────────────────────────────────────────
 
-    // STEP D: No customer name → ask for it (template message)
+    // STEP D: No customer name → Profile Agent
     if (!order.customerName) {
-      // If user just sent a message, it IS the name (previous turn asked for it)
-      const lastAssistantMsg = history.filter(h => h.role === 'assistant').pop();
-      if (lastAssistantMsg && lastAssistantMsg.content.includes('[WAITING_FOR_NAME]')) {
-        // This message IS the name
-        order.customerName = rawMessage.trim();
+      // Pass 'name' as the missing field
+      const profileResult = await handleProfileMessage(history, 'name', currentLanguage);
+      
+      if (profileResult.customerName) {
+        order.customerName = profileResult.customerName;
         console.log(`  👤 [Supervisor] Name captured: ${order.customerName}`);
         saveCartSnapshot(sessionId, order);
-        // Now ask for phone
-        const phonePrompt = `Shukriya ${order.customerName}! 👍\n\nAb aapka **phone number** batao (jaise: 03XX-XXXXXXX):`;
+        
+        // Silently transition to Step E if successful, without breaking turn
+        const phonePrompt = await smartTranslate(`Shukriya ${order.customerName}! 👍\n\nAb aapka **phone number** batao (jaise: 03XX-XXXXXXX):`, currentLanguage);
         addToHistory(sessionId, 'assistant', phonePrompt + '\n[WAITING_FOR_PHONE]');
         console.log(`  ⏱️  [Supervisor] Turn completed in ${Date.now() - turnStart}ms`);
         return { reply: phonePrompt, sessionId, orderSubmitted: false, order };
+      } else {
+        // Fallback: If no name extracted (e.g. conversational question), Mouth handles reply
+        const reply = profileResult.reply || await smartTranslate(`Ab sirf **aapka naam** batao:`, currentLanguage);
+        addToHistory(sessionId, 'assistant', reply + '\n[WAITING_FOR_NAME]');
+        console.log(`  ⏱️  [Supervisor] Turn completed in ${Date.now() - turnStart}ms`);
+        return { reply, sessionId, orderSubmitted: false, order };
       }
-      // First time reaching this step → ask for name
-      const namePrompt = `Ab sirf **aapka naam** batao:`;
-      addToHistory(sessionId, 'assistant', namePrompt + '\n[WAITING_FOR_NAME]');
-      console.log(`  ⏱️  [Supervisor] Turn completed in ${Date.now() - turnStart}ms`);
-      return { reply: namePrompt, sessionId, orderSubmitted: false, order };
     }
 
-    // STEP E: No phone number → ask for it (template message)
+    // STEP E: No phone number → Profile Agent
     if (!order.phoneNumber) {
-      const lastAssistantMsg = history.filter(h => h.role === 'assistant').pop();
-      if (lastAssistantMsg && lastAssistantMsg.content.includes('[WAITING_FOR_PHONE]')) {
-        // This message IS the phone number
-        const phoneRaw = rawMessage.trim().replace(/[^0-9+]/g, '');
-        if (phoneRaw.length >= 10) {
-          order.phoneNumber = phoneRaw;
-          console.log(`  📱 [Supervisor] Phone captured: ${order.phoneNumber}`);
-          saveCartSnapshot(sessionId, order);
-        } else {
-          const retryPrompt = `Yeh valid phone number nahi laga. Please 03XX-XXXXXXX format mein batao:`;
-          addToHistory(sessionId, 'assistant', retryPrompt + '\n[WAITING_FOR_PHONE]');
-          console.log(`  ⏱️  [Supervisor] Turn completed in ${Date.now() - turnStart}ms`);
-          return { reply: retryPrompt, sessionId, orderSubmitted: false, order };
-        }
+      // Pass 'phone' as the missing field
+      const profileResult = await handleProfileMessage(history, 'phone', currentLanguage);
+      
+      if (profileResult.phoneNumber) {
+        order.phoneNumber = profileResult.phoneNumber;
+        console.log(`  📱 [Supervisor] Phone captured: ${order.phoneNumber}`);
+        saveCartSnapshot(sessionId, order);
+        // Fall through to Step F automatically
       } else {
-        // First time reaching this step → ask for phone
-        const phonePrompt = `Aapka **phone number** batao (jaise: 03XX-XXXXXXX):`;
-        addToHistory(sessionId, 'assistant', phonePrompt + '\n[WAITING_FOR_PHONE]');
+        // Fallback: If no phone extracted, Mouth handles reply
+        const reply = profileResult.reply || await smartTranslate(`Aapka **phone number** batao (jaise: 03XX-XXXXXXX):`, currentLanguage);
+        addToHistory(sessionId, 'assistant', reply + '\n[WAITING_FOR_PHONE]');
         console.log(`  ⏱️  [Supervisor] Turn completed in ${Date.now() - turnStart}ms`);
-        return { reply: phonePrompt, sessionId, orderSubmitted: false, order };
+        return { reply, sessionId, orderSubmitted: false, order };
       }
     }
 
     // STEP F: All collected, not yet confirmed → show CODE-GENERATED summary
     if (order.status !== 'REVIEWING' && order.status !== 'SUBMITTED') {
       const lastAssistantMsg = history.filter(h => h.role === 'assistant').pop();
-      if (lastAssistantMsg && lastAssistantMsg.content.includes('[WAITING_FOR_CONFIRM]')) {
-        // User is responding to the confirmation prompt
+      const isRespondingToConfirm = lastAssistantMsg && lastAssistantMsg.content.includes('[WAITING_FOR_CONFIRM]');
+      const isRespondingToChange = lastAssistantMsg && lastAssistantMsg.content.includes('Kya change karna hai');
+      
+      if (isRespondingToConfirm || isRespondingToChange) {
         const lower = rawMessage.toLowerCase().trim();
-        const isYes = /^(h[aā]n|yes|ok|confirm|thea?k|bilkul|ji|sure|done|bas|sahi|ready|proceed|y)/.test(lower);
+        // A "Yes" must be positive and explicitly NOT contain change keywords
+        const isYes = isRespondingToConfirm && /^(h[aā]n|yes|ok|confirm|thea?k|bilkul|ji|sure|done|bas|sahi|ready|proceed|y)/.test(lower) && !/(nahi|no|change|add|aur|remove|hata|kardo|coke|burger|fries|broast)/.test(lower);
         
         if (isYes) {
           // CONFIRMED — submit order
@@ -332,7 +368,7 @@ async function handleIncomingMessage(phoneNumber, rawMessage, tenantId = 'defaul
 
           const confirmMsg = composeTemplate('ORDER_CONFIRMED', { customerName: order.customerName });
           const translatedConfirm = await smartTranslate(confirmMsg, currentLanguage);
-          sendMessage(phoneNumber, translatedConfirm);
+          sendMessage(order.phoneNumber || phoneNumber, translatedConfirm);
 
           const confirmReply = `✅ **Aapka order restaurant ko bhej diya gaya hai confirmation ke liye!**\n\n📱 ${order.customerName}, aapko jaldi call aayegi ${order.phoneNumber} par.\n\nShukriya WASI se order karne ke liye! 🙏`;
           addToHistory(sessionId, 'assistant', confirmReply);
@@ -340,11 +376,54 @@ async function handleIncomingMessage(phoneNumber, rawMessage, tenantId = 'defaul
           console.log(`  ⏱️  [Supervisor] Turn completed in ${Date.now() - turnStart}ms`);
           return { reply: confirmReply, sessionId, orderSubmitted: true, order: finalOrder };
         } else {
-          // Not confirmed — ask what they want to change
-          const changePrompt = `Kya change karna hai? Batao aur main update kar dunga.`;
-          addToHistory(sessionId, 'assistant', changePrompt);
-          console.log(`  ⏱️  [Supervisor] Turn completed in ${Date.now() - turnStart}ms`);
-          return { reply: changePrompt, sessionId, orderSubmitted: false, order };
+          // Not confirmed — process change intent
+          const changeType = await classifyChangeIntent(englishMessage);
+          
+          if (changeType === 'menu') {
+            const currentCart = getOrder(sessionId).items || [];
+            const menuResult = await handleMenuQuery(history, currentCart, currentLanguage, [], order.receptionistNotes);
+            
+            // Apply the menu changes (add/remove items) to the cart immediately
+            if (menuResult.selectedItems) {
+              addItemsToCart(sessionId, menuResult.selectedItems);
+            }
+            // Save pending clarifications
+            order.pendingClarifications = menuResult.pendingClarifications || [];
+            saveCartSnapshot(sessionId, getOrder(sessionId));
+            addToHistory(sessionId, 'assistant', menuResult.reply);
+            console.log(`  ⏱️  [Supervisor] Turn completed in ${Date.now() - turnStart}ms`);
+            return { reply: menuResult.reply, sessionId, orderSubmitted: false, order: getOrder(sessionId) };
+          } else if (changeType === 'address') {
+            order.deliveryAddress = null;
+            saveCartSnapshot(sessionId, order);
+            const reply = await smartTranslate("Thik hai, apna naya delivery address bataiye:", currentLanguage);
+            addToHistory(sessionId, 'assistant', reply);
+            return { reply, sessionId, orderSubmitted: false, order };
+          } else if (changeType === 'payment') {
+            order.paymentMethod = null;
+            saveCartSnapshot(sessionId, order);
+            const reply = await smartTranslate("Thik hai, apna naya payment method bataiye (Cash ya Card):", currentLanguage);
+            addToHistory(sessionId, 'assistant', reply);
+            return { reply, sessionId, orderSubmitted: false, order };
+          } else if (changeType === 'name') {
+            order.customerName = null;
+            saveCartSnapshot(sessionId, order);
+            const reply = await smartTranslate("Thik hai, apna naya naam bataiye:", currentLanguage);
+            addToHistory(sessionId, 'assistant', reply);
+            return { reply, sessionId, orderSubmitted: false, order };
+          } else if (changeType === 'phone') {
+            order.phoneNumber = null;
+            saveCartSnapshot(sessionId, order);
+            const reply = await smartTranslate("Thik hai, apna naya phone number bataiye:", currentLanguage);
+            addToHistory(sessionId, 'assistant', reply);
+            return { reply, sessionId, orderSubmitted: false, order };
+          } else {
+            // If they just said "no" or it's unclear, ask what to change
+            const changePrompt = `Kya change karna hai? Batao aur main update kar dunga.`;
+            addToHistory(sessionId, 'assistant', changePrompt);
+            console.log(`  ⏱️  [Supervisor] Turn completed in ${Date.now() - turnStart}ms`);
+            return { reply: changePrompt, sessionId, orderSubmitted: false, order };
+          }
         }
       }
 
@@ -381,26 +460,123 @@ async function handleRejection(sessionId, rejectionReason) {
 
   updateState(sessionId, 'REJECTED');
   const currentLanguage = session.language || 'ROMAN-URDU';
+  const order = getOrder(sessionId) || {};
+  const targetPhone = order.phoneNumber || session.phoneNumber;
 
   switch (rejectionReason) {
     case 'ITEM_OUT_OF_STOCK':
       updateState(sessionId, 'ORDERING');
-      sendMessage(session.phoneNumber,
+      sendMessage(targetPhone,
         await smartTranslate(composeTemplate('OUT_OF_STOCK', { itemName: 'the requested item' }), currentLanguage)
       );
       break;
     case 'ADDRESS_UNDELIVERABLE':
       updateState(sessionId, 'ORDERING');
-      sendMessage(session.phoneNumber,
+      sendMessage(targetPhone,
         await smartTranslate(composeTemplate('ADDRESS_ISSUE'), currentLanguage)
       );
       break;
     default:
-      sendMessage(session.phoneNumber,
+      sendMessage(targetPhone,
         await smartTranslate(composeTemplate('ORDER_REJECTED', { reason: rejectionReason }), currentLanguage)
       );
       break;
   }
 }
 
-module.exports = { handleIncomingMessage, handleRejection };
+// ─────────────────────────────────────────────────────────────
+//  RECEPTIONIST FEEDBACK HANDLER
+//  Uses LLM to smartly alter the order state based on feedback
+// ─────────────────────────────────────────────────────────────
+async function handleReceptionistFeedback(sessionId, feedback) {
+  const session = getSession(sessionId);
+  if (!session) return;
+  const order = getOrder(sessionId);
+
+  const brainPrompt = `You are WASI's internal state manager.
+The receptionist rejected this order with the following feedback: "${feedback}"
+
+CURRENT ORDER ITEMS: ${JSON.stringify(order.items)}
+CURRENT ADDRESS: ${order.deliveryAddress || 'None'}
+CURRENT PAYMENT: ${order.paymentMethod || 'None'}
+CURRENT NAME: ${order.customerName || 'None'}
+CURRENT PHONE: ${order.phoneNumber || 'None'}
+CURRENT DELIVERY FEE: ${order.deliveryFee || 0}
+CURRENT ETA: ${order.eta || 'None'}
+
+Determine what data needs to be cleared so the customer can correct it, OR what fields the receptionist explicitly wants to update/override.
+Output ONLY a valid JSON object matching this schema:
+{
+  "removeItems": ["item_id_1", "item_id_2"], // IDs of items that are out of stock or need removal
+  "clearAddress": true, // true if the address is incomplete, invalid, or needs changing
+  "clearPayment": true, // true if the payment method is rejected
+  "clearName": true,    // true if the customer name is invalid or needs to be changed
+  "clearPhone": true,   // true if the phone number is invalid or needs to be changed
+  "overrides": {        // Any explicit value changes requested by the receptionist (e.g. deliveryFee, eta). Match the exact keys of the order object.
+     "deliveryFee": 200
+  }
+}
+If nothing needs to be removed/cleared/overridden, use empty arrays/false/empty object.`;
+
+  let modifications = { removeItems: [], clearAddress: false, clearPayment: false, clearName: false, clearPhone: false, overrides: {} };
+  try {
+    const jsonReply = await callLLM(brainPrompt, '', 200, true);
+    modifications = JSON.parse(jsonReply);
+    console.log(`  🧠 [Feedback Brain] Extracted modifications: ${JSON.stringify(modifications)}`);
+  } catch (e) {
+    console.log(`  ⚠️ [Feedback Brain] JSON extraction failed: ${e.message}`);
+  }
+
+  // Apply overrides first so clears can override them if both are set
+  if (modifications.overrides && Object.keys(modifications.overrides).length > 0) {
+    Object.assign(order, modifications.overrides);
+  }
+
+  // Apply modifications
+  if (modifications.removeItems && modifications.removeItems.length > 0) {
+    modifications.removeItems.forEach(itemId => {
+      removeItemFromCart(sessionId, itemId);
+    });
+  }
+
+  if (modifications.clearAddress) {
+    order.deliveryAddress = null;
+    order.deliveryFee = 0;
+    order.eta = null;
+    order.orderType = null;
+  }
+
+  if (modifications.clearPayment) {
+    order.paymentMethod = null;
+    order.paymentStatus = 'pending';
+  }
+
+  if (modifications.clearName) {
+    order.customerName = null;
+  }
+
+  if (modifications.clearPhone) {
+    order.phoneNumber = null;
+  }
+
+  // Reset status so it routes properly
+  order.status = 'BUILDING';
+  updateState(sessionId, 'ORDERING');
+  
+  // Track receptionist constraints
+  order.receptionistNotes = order.receptionistNotes || [];
+  order.receptionistNotes.push(feedback);
+
+  // Notify customer
+  let feedbackMsg = `The restaurant has a note about your order: "${feedback}". I have updated your order accordingly. Please provide the updated information.`;
+  
+  // Add hidden tags so the deterministic Steps D & E know the user is answering this
+  let hiddenTags = '';
+  if (modifications.clearName) hiddenTags += '\n[WAITING_FOR_NAME]';
+  if (modifications.clearPhone) hiddenTags += '\n[WAITING_FOR_PHONE]';
+
+  addToHistory(sessionId, 'assistant', feedbackMsg + hiddenTags);
+  return feedbackMsg;
+}
+
+module.exports = { handleIncomingMessage, handleRejection, handleReceptionistFeedback };

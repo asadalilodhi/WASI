@@ -43,9 +43,10 @@ const CLARIFICATION_TEMPLATES = {
 //  Pure code. No LLM. Maps raw intents → menu item IDs.
 //  If disambiguation is needed, pushes to pendingClarifications.
 // ─────────────────────────────────────────────────────────────
-function resolveIntents(intents, pendingClarifications = []) {
+function resolveIntents(intents, currentPending = []) {
   const resolved = [];       // Items ready to add: [{ id, qty }]
   const newPending = [];     // Items that need clarification
+  const addressedTypes = new Set();
 
   for (const intent of intents) {
     const kw = (intent.keyword || '').toLowerCase();
@@ -54,72 +55,52 @@ function resolveIntents(intents, pendingClarifications = []) {
 
     // ── BURGER ──
     if (kw.match(/burger|zinger/)) {
-      resolved.push({ id: '1', qty });
+      resolved.push({ id: '1', qty, action: intent.action });
 
     // ── BROAST ──
     } else if (kw.match(/broast/)) {
+      addressedTypes.add('broast_size');
       if (size.match(/8|eight|bari|large|bara/) || kw.includes('8')) {
-        resolved.push({ id: '3', qty });
+        resolved.push({ id: '3', qty, action: intent.action });
       } else if (size.match(/4|four|choti|regular|small/) || kw.includes('4')) {
-        resolved.push({ id: '2', qty });
+        resolved.push({ id: '2', qty, action: intent.action });
       } else {
-        newPending.push({ type: 'broast_size', qty });
+        newPending.push({ type: 'broast_size', qty, action: intent.action });
       }
 
     // ── FRIES ──
     } else if (kw.match(/fries|chips|french/)) {
+      addressedTypes.add('fries_size');
       if (size.match(/large|bari|bara|180/)) {
-        resolved.push({ id: '5', qty });
+        resolved.push({ id: '5', qty, action: intent.action });
       } else if (size.match(/regular|choti|normal|small|120/)) {
-        resolved.push({ id: '4', qty });
+        resolved.push({ id: '4', qty, action: intent.action });
       } else {
-        newPending.push({ type: 'fries_size', qty });
+        newPending.push({ type: 'fries_size', qty, action: intent.action });
       }
 
     // ── COKE / DRINK ──
     } else if (kw.match(/coke|cola|pepsi|drink|sprite/)) {
+      addressedTypes.add('coke_size');
       if (size.match(/large|bari|bara|120/)) {
-        resolved.push({ id: '7', qty });
+        resolved.push({ id: '7', qty, action: intent.action });
       } else if (size.match(/regular|choti|normal|small|80/)) {
-        resolved.push({ id: '6', qty });
+        resolved.push({ id: '6', qty, action: intent.action });
       } else {
-        newPending.push({ type: 'coke_size', qty });
+        newPending.push({ type: 'coke_size', qty, action: intent.action });
       }
     }
     // Unknown items are silently ignored — the Mouth will say "unavailable"
   }
 
-  return { resolved, newPending };
-}
-
-
-// ─────────────────────────────────────────────────────────────
-//  RESOLVE PENDING CLARIFICATION
-//  When the user answers a disambiguation question (e.g., "Regular"),
-//  this maps their answer back to a menu item.
-// ─────────────────────────────────────────────────────────────
-function resolveClarification(clarification, userAnswer) {
-  const answer = userAnswer.toLowerCase();
-
-  switch (clarification.type) {
-    case 'fries_size':
-      if (answer.match(/large|bari|bara|180/)) return { id: '5', qty: clarification.qty };
-      if (answer.match(/regular|choti|normal|small|120/)) return { id: '4', qty: clarification.qty };
-      return null; // Still ambiguous
-
-    case 'broast_size':
-      if (answer.match(/8|eight|bari|large|bara|800/)) return { id: '3', qty: clarification.qty };
-      if (answer.match(/4|four|choti|regular|small|450/)) return { id: '2', qty: clarification.qty };
-      return null;
-
-    case 'coke_size':
-      if (answer.match(/large|bari|bara|120/)) return { id: '7', qty: clarification.qty };
-      if (answer.match(/regular|choti|normal|small|80/)) return { id: '6', qty: clarification.qty };
-      return null;
-
-    default:
-      return null;
+  // Keep any pending items that were NOT addressed by the user's intents
+  for (const p of currentPending) {
+    if (!addressedTypes.has(p.type)) {
+      newPending.push(p);
+    }
   }
+
+  return { resolved, newPending };
 }
 
 
@@ -128,32 +109,46 @@ function resolveClarification(clarification, userAnswer) {
 //  The LLM's ONLY job: understand messy input → structured intent.
 //  No menu IDs, no prices, no cart management.
 // ─────────────────────────────────────────────────────────────
-async function extractIntent(lastAssistantMsg, lastUserMsg) {
+async function extractIntent(lastAssistantMsg, lastUserMsg, pendingClarifications = [], receptionistNotes = []) {
+  const clarificationContext = pendingClarifications.length > 0 
+    ? `\nCONTEXT: We just asked the user to clarify these items: ${JSON.stringify(pendingClarifications)}. Their reply likely answers this.` 
+    : '';
+
+  const notesStr = (receptionistNotes && receptionistNotes.length > 0)
+    ? `\nCRITICAL CONSTRAINTS FROM RECEPTIONIST: ${receptionistNotes.join(' | ')}. If the user asks for a forbidden item, DO NOT add it (return action: "add" but it will be rejected later, or just ignore it).`
+    : '';
+
   const brainPrompt = `You are a strict intent-extraction parser for a food delivery chatbot.
 Your ONLY job is to read the user's message and output a structured JSON describing what they want.
-
+${clarificationContext}
+${notesStr}
 You MUST output ONLY a valid JSON object matching this schema:
 {
-  "action": "add",
+  "message_type": "ordering",
   "intents": [
-    { "keyword": "burger", "qty": 2, "size": null },
-    { "keyword": "fries", "qty": 3, "size": "regular" }
+    { "action": "add", "keyword": "burger", "qty": 2, "size": null },
+    { "action": "remove", "keyword": "fries", "qty": 1, "size": "regular" },
+    { "action": "set", "keyword": "broast", "qty": 1, "size": "8 piece" }
   ]
 }
 
 RULES:
-- "action" must be one of: "add", "remove", "done", "question", "greeting", "confirm", "other"
-  - "add" = user wants to add/order items
-  - "remove" = user wants to remove items from the cart
+- "message_type" must be one of: "ordering", "done", "question", "greeting", "confirm", "other"
+  - "ordering" = user is ordering (adding/removing/modifying items)
   - "done" = user says they're done ordering (e.g., "bas", "that's all", "hogaya", "kafi")
   - "question" = user is asking about the menu or prices
   - "greeting" = user just said hi/hello
   - "confirm" = user is confirming something (e.g., "haan", "yes", "ok", "thik hai")
   - "other" = anything else
+- For each item in "intents", "action" must be one of:
+  - "add" = increment quantity (e.g. "ek aur burger", "aur daal do")
+  - "remove" = decrement/remove quantity (e.g. "hata den", "nikal do")
+  - "set" = exactly this quantity (e.g. "make it 3 burgers", "just 1 coke")
+  - If it's unclear if it's add or set (e.g., "give me 2 burgers"), use "add".
 - "keyword" should be the food item name in English (e.g., "burger", "fries", "broast", "coke")
 - "qty" should be the quantity. Default to 1 if not specified.
 - "size" should capture any size/variant info (e.g., "regular", "large", "4 piece", "8 piece"). Set to null if the user does not EXPLICITLY specify it. DO NOT guess or assume sizes.
-- If the user isn't ordering anything, output: { "action": "question", "intents": [] }
+- If the user isn't ordering anything, output: { "message_type": "question", "intents": [] }
 - Extract from the LATEST user message only. Do NOT repeat old items.`;
 
   const messages = [];
@@ -167,7 +162,7 @@ RULES:
     return parsed;
   } catch (e) {
     console.log(`  ⚠️ [Menu Intent] Parse failed: ${e.message}`);
-    return { action: 'other', intents: [] };
+    return { message_type: 'other', intents: [] };
   }
 }
 
@@ -199,66 +194,17 @@ RULES:
 //  MAIN: handleMenuQuery
 //  Orchestrates: Intent Extraction → Resolver → Mouth
 // ─────────────────────────────────────────────────────────────
-async function handleMenuQuery(conversationHistory, currentCart = [], detectedLanguage = 'ROMAN-URDU', pendingClarifications = []) {
+async function handleMenuQuery(conversationHistory, currentCart = [], detectedLanguage = 'ROMAN-URDU', pendingClarifications = [], receptionistNotes = []) {
 
   // Get the last assistant + user messages for the Brain
   const lastAssistantMsg = conversationHistory.filter(msg => msg.role === 'assistant').pop();
   const lastUserMsg = conversationHistory.filter(msg => msg.role === 'user').pop();
 
-  // ── CASE 1: We have pending clarifications → try to resolve them ──
-  if (pendingClarifications.length > 0) {
-    const userText = lastUserMsg?.content || '';
-    const resolvedFromClarification = [];
-    const stillPending = [];
-
-    for (const clarification of pendingClarifications) {
-      const result = resolveClarification(clarification, userText);
-      if (result) {
-        resolvedFromClarification.push(result);
-      } else {
-        stillPending.push(clarification);
-      }
-    }
-
-    if (resolvedFromClarification.length > 0) {
-      console.log(`  ✅ [Menu Resolver] Clarifications resolved: ${JSON.stringify(resolvedFromClarification)}`);
-    }
-
-    // Build the Mouth instruction
-    const parts = [];
-
-    // Describe what was resolved
-    for (const item of resolvedFromClarification) {
-      const menuItem = MENU.find(m => m.id === item.id);
-      if (menuItem) parts.push(`Confirm to the user: Added ${item.qty}x ${menuItem.name} (Rs.${menuItem.price} each) to their cart.`);
-    }
-
-    // If there are still unresolved clarifications, ask again
-    for (const p of stillPending) {
-      parts.push(`Ask the user: ${CLARIFICATION_TEMPLATES[p.type]} (quantity: ${p.qty})`);
-    }
-
-    if (parts.length === 0) {
-      parts.push('Tell the user their items have been added. Ask if they want anything else.');
-    }
-
-    const instruction = parts.join('\n');
-    const reply = await generateReply(instruction, conversationHistory, detectedLanguage);
-
-    return {
-      reply,
-      selectedItems: resolvedFromClarification,
-      pendingClarifications: stillPending,
-      menu: MENU,
-    };
-  }
-
-
-  // ── CASE 2: No pending clarifications → extract new intent ──
-  const intent = await extractIntent(lastAssistantMsg, lastUserMsg);
+  // Extract intent through the Brain (injecting pending clarifications as context)
+  const intent = await extractIntent(lastAssistantMsg, lastUserMsg, pendingClarifications, receptionistNotes);
 
   // Handle non-ordering actions
-  if (intent.action === 'done') {
+  if (intent.message_type === 'done') {
     // Build cart summary from code
     const cartLines = currentCart.map(i => {
       const menuItem = MENU.find(m => String(m.id) === String(i.id));
@@ -277,16 +223,20 @@ async function handleMenuQuery(conversationHistory, currentCart = [], detectedLa
     return { reply, selectedItems: null, pendingClarifications: [], menu: MENU, isDone: true };
   }
 
-  if (intent.action === 'greeting' || intent.action === 'question') {
-    const instruction = intent.action === 'greeting'
-      ? `Greet the user and show them the menu:\n${MENU_STRING}\n\nAsk what they would like to order.`
-      : `The user has a question. Answer based on our menu:\n${MENU_STRING}`;
+  if (intent.message_type === 'greeting' || intent.message_type === 'question') {
+    const cartText = currentCart.length > 0 
+      ? `\n\n(For your reference, the user's current cart has: ${currentCart.map(i => { const m = MENU.find(x => String(x.id) === String(i.id)); return m ? `${m.name} ×${i.qty}` : ''; }).filter(Boolean).join(', ')})`
+      : '\n\n(The cart is currently empty.)';
+
+    const instruction = intent.message_type === 'greeting'
+      ? `Greet the user and show them the menu:\n${MENU_STRING}\n\nAsk what they would like to order.${cartText}`
+      : `The user has a question. Answer based on our menu and their cart state:\nMENU:\n${MENU_STRING}${cartText}`;
 
     const reply = await generateReply(instruction, conversationHistory, detectedLanguage);
     return { reply, selectedItems: null, pendingClarifications: [], menu: MENU };
   }
 
-  if (intent.action === 'other' || intent.action === 'confirm') {
+  if (intent.message_type === 'other' || intent.message_type === 'confirm') {
     const instruction = currentCart.length > 0
       ? `The user said something general. Show their current cart and ask if they want to add more or are done:\nCurrent cart: ${currentCart.map(i => { const m = MENU.find(x => String(x.id) === String(i.id)); return m ? `${m.name} ×${i.qty}` : ''; }).filter(Boolean).join(', ')}`
       : `The user said something general. Show the menu and ask what they want to order:\n${MENU_STRING}`;
@@ -295,74 +245,132 @@ async function handleMenuQuery(conversationHistory, currentCart = [], detectedLa
     return { reply, selectedItems: null, pendingClarifications: [], menu: MENU };
   }
 
-  // ── ACTION: "add" or "remove" → run through the Deterministic Resolver ──
-  if (intent.action === 'remove') {
-    // Find matching items to remove
-    const toRemove = [];
-    for (const item of intent.intents) {
-      const kw = (item.keyword || '').toLowerCase();
-      const match = currentCart.find(i => {
-        const menuItem = MENU.find(m => String(m.id) === String(i.id));
-        return menuItem && menuItem.name.toLowerCase().includes(kw);
-      });
-      if (match) toRemove.push({ id: match.id, qty: 0 });
+  // ── ACTION: "ordering" (Mixed intents: add, remove, set) ──
+  const removeIntents = (intent.intents || []).filter(i => i.action === 'remove');
+  const addOrSetIntents = (intent.intents || []).filter(i => i.action === 'add' || i.action === 'set');
+
+  // Track the absolute new quantities for items that are modified
+  const finalCartDeltas = {}; 
+  
+  // Initialize with current cart quantities
+  currentCart.forEach(i => { finalCartDeltas[i.id] = i.qty; });
+
+  const parts = []; // Instructions for the LLM Mouth
+
+  // Process Removals
+  const removedNames = [];
+  let stillPending = pendingClarifications;
+  
+  for (const item of removeIntents) {
+    const kw = (item.keyword || '').toLowerCase();
+    const size = (item.size || '').toLowerCase();
+    
+    const matches = currentCart.filter(i => {
+      const menuItem = MENU.find(m => String(m.id) === String(i.id));
+      if (!menuItem) return false;
+      const name = menuItem.name.toLowerCase();
+      // If size is provided, it must match
+      if (size && !name.includes(size)) return false;
+      return name.includes(kw);
+    });
+    
+    if (matches.length > 1) {
+      // Need clarification
+      const options = matches.map(m => MENU.find(x => x.id === m.id).name).join(' or ');
+      parts.push(`Ask the user which size they want to remove: ${options}?`);
+    } else if (matches.length === 1) {
+      const match = matches[0];
+      const removeQty = item.qty || 1;
+      finalCartDeltas[match.id] = Math.max(0, finalCartDeltas[match.id] - removeQty);
+      
+      const menuItem = MENU.find(m => m.id === match.id);
+      if (menuItem) removedNames.push(`${removeQty}x ${menuItem.name}`);
+      
+      // Clear pending clarifications for removed items
+      stillPending = stillPending.filter(p => !p.type.includes(kw));
+    } else {
+      // Not found, handled below in unknown items if it's completely unknown, 
+      // but if it's a known keyword just missing from cart:
+      parts.push(`Tell the user: You couldn't find "${item.keyword}" in their cart to remove.`);
     }
-
-    const instruction = toRemove.length > 0
-      ? `Tell the user you removed: ${toRemove.map(i => MENU.find(m => m.id === i.id)?.name).join(', ')} from their cart.`
-      : `Tell the user you couldn't find that item in their cart.`;
-
-    const reply = await generateReply(instruction, conversationHistory, detectedLanguage);
-    return { reply, selectedItems: toRemove, pendingClarifications: [], menu: MENU };
   }
 
-  // ── ACTION: "add" ──
-  const { resolved, newPending } = resolveIntents(intent.intents, pendingClarifications);
+  if (removedNames.length > 0) {
+    parts.push(`Confirm you removed from cart: ${removedNames.join(', ')}.`);
+  }
 
-  // Check for unknown items (items in intents that weren't resolved or pended)
-  const handledKeywords = intent.intents.filter(i => {
+  // Process Additions & Sets
+  const { resolved, newPending } = resolveIntents(addOrSetIntents, stillPending);
+
+  for (const res of resolved) {
+    const id = res.id;
+    if (res.action === 'set') {
+      finalCartDeltas[id] = res.qty;
+    } else { // 'add' or unknown (defaults to add)
+      finalCartDeltas[id] = (finalCartDeltas[id] || 0) + res.qty;
+    }
+    
+    const menuItem = MENU.find(m => m.id === id);
+    if (menuItem) {
+      if (res.action === 'set') {
+        parts.push(`Confirm: Updated ${menuItem.name} quantity to ${res.qty}.`);
+      } else {
+        parts.push(`Confirm: Added ${res.qty}x ${menuItem.name} to the cart.`);
+      }
+    }
+  }
+
+  // Identify unknown items
+  const handledKeywords = (intent.intents || []).filter(i => {
     const kw = (i.keyword || '').toLowerCase();
     return kw.match(/burger|zinger|broast|fries|chips|french|coke|cola|pepsi|drink|sprite/);
   });
-  const unknownItems = intent.intents.filter(i => !handledKeywords.includes(i));
-
-  // Build the Mouth instruction
-  const parts = [];
-
-  // Describe resolved items
-  for (const item of resolved) {
-    const menuItem = MENU.find(m => m.id === item.id);
-    if (menuItem) parts.push(`Confirm: Added ${item.qty}x ${menuItem.name} (Rs.${menuItem.price} each) to the cart.`);
-  }
-
-  // Describe unknown items
+  const unknownItems = (intent.intents || []).filter(i => !handledKeywords.includes(i));
+  
   for (const item of unknownItems) {
-    parts.push(`Tell the user: "${item.keyword}" is not available on our menu.`);
+    if (item.action === 'add' || item.action === 'set') {
+      parts.push(`Tell the user: "${item.keyword}" is not available on our menu.`);
+    } else if (item.action === 'remove') {
+      parts.push(`Tell the user: You couldn't find "${item.keyword}" in their cart to remove.`);
+    }
   }
 
-  // Ask pending clarifications
+  // Format pending clarifications
   for (const p of newPending) {
-    parts.push(`Ask the user: ${CLARIFICATION_TEMPLATES[p.type]} (they want ${p.qty})`);
+    parts.push(`CRITICAL: Do NOT say you added the item. Just ask the user: ${CLARIFICATION_TEMPLATES[p.type] || 'Which size do you want?'} (they want ${p.qty})`);
   }
 
-  // If nothing happened, ask what they want
+  // If nothing happened, ask what else they want
   if (parts.length === 0) {
-    parts.push(`Show the menu and ask what they want to order:\n${MENU_STRING}`);
+    parts.push(`Ask what else they want to order. If cart is empty, show menu:\n${MENU_STRING}`);
   }
 
-  if (resolved.length > 0) {
-    console.log(`  ✅ [Menu Resolver] Resolved: ${JSON.stringify(resolved)}`);
+  // Convert the finalCartDeltas back into the selectedItems array format expected by orderAgent
+  // We only send items that were ACTUALLY modified (resolved additions or successful removals)
+  const modifiedItemIds = new Set([
+    ...removedNames.length > 0 ? removeIntents.map(i => currentCart.find(c => MENU.find(m => m.id === c.id)?.name.toLowerCase().includes((i.keyword || '').toLowerCase()))?.id).filter(Boolean) : [],
+    ...resolved.map(r => r.id)
+  ]);
+
+  const selectedItems = Array.from(modifiedItemIds).map(id => ({
+    id: id,
+    qty: finalCartDeltas[id] || 0
+  }));
+
+  if (selectedItems.length > 0) {
+    console.log(`  ✅ [Menu Resolver] Pushing absolute quantities: ${JSON.stringify(selectedItems)}`);
   }
   if (newPending.length > 0) {
     console.log(`  ⏳ [Menu Resolver] Pending clarifications: ${JSON.stringify(newPending)}`);
   }
 
-  const instruction = parts.join('\n');
+  const notesStr = (receptionistNotes && receptionistNotes.length > 0) ? `\nCRITICAL CONSTRAINTS FROM RECEPTIONIST:\n${receptionistNotes.map(n => `- ${n}`).join('\n')}\nIf the user explicitly requests an item forbidden by these constraints, YOU MUST TELL THEM it is unavailable.` : '';
+  const instruction = parts.join('\n') + notesStr;
   const reply = await generateReply(instruction, conversationHistory, detectedLanguage);
 
   return {
     reply,
-    selectedItems: resolved.length > 0 ? resolved : null,
+    selectedItems: selectedItems.length > 0 ? selectedItems : null,
     pendingClarifications: newPending,
     menu: MENU,
   };

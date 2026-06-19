@@ -95,5 +95,12 @@ function clearOTP(phoneNumber) {
   delete otpStore[phoneNumber];
 }
 
+// ─────────────────────────────────────────────────────────────
+//  GET LATEST OTP (For simulation / testing)
+// ─────────────────────────────────────────────────────────────
+function getLatestOTP(phoneNumber) {
+  return otpStore[phoneNumber] ? otpStore[phoneNumber].otp : null;
+}
 
-module.exports = { generateOTP, validateOTP, hasPendingOTP, clearOTP };
+
+module.exports = { generateOTP, validateOTP, hasPendingOTP, clearOTP, getLatestOTP };

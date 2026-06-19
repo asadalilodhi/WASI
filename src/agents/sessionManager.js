@@ -59,7 +59,7 @@ function getSession(sessionId) {
 function getSessionByPhone(phoneNumber) {
   return Object.values(sessions).find(
     s => s.phoneNumber === phoneNumber &&
-         !['CONFIRMED', 'REJECTED', 'EXPIRED', 'CANCELLED'].includes(s.state)
+         !['CONFIRMED', 'REJECTED', 'EXPIRED', 'CANCELLED', 'SUBMITTED'].includes(s.state)
   ) || null;
 }
 

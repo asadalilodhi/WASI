@@ -21,7 +21,7 @@
 require('dotenv').config();
 const readline = require('readline');
 const { handleIncomingMessage, handleRejection } = require('./agents/supervisorAgent');
-const { generateOTP }                            = require('./agents/otpAgent');
+const { getLatestOTP }                           = require('./agents/otpAgent');
 const { getLastThinking }                        = require('./llm');
 
 // ─────────────────────────────────────────────────────────────
@@ -147,9 +147,11 @@ async function customerPhase() {
 
       // Show OTP after first message so user can enter it
       if (!otpShown && turnCount === 1) {
-        const otp = generateOTP(CUSTOMER_PHONE);
-        print(`  ${CLR.yellow}💡 [SIM] Your OTP is: ${CLR.bold}${otp}${CLR.reset}`);
-        print(`  ${CLR.dim}     (In production this arrives via WhatsApp)${CLR.reset}\n`);
+        const otp = getLatestOTP(CUSTOMER_PHONE);
+        if (otp) {
+          print(`  ${CLR.yellow}💡 [SIM] Your OTP is: ${CLR.bold}${otp}${CLR.reset}`);
+          print(`  ${CLR.dim}     (In production this arrives via WhatsApp)${CLR.reset}\n`);
+        }
         otpShown = true;
       }
 
@@ -217,17 +219,13 @@ async function receptionistPhase(sessionId, order) {
         subheader('CUSTOMER CONVERSATION (feedback loop)');
         print(`  ${CLR.dim}The customer received your message. They're replying...${CLR.reset}\n`);
 
-        // Show what the customer sees (the receptionist's feedback phrased by WASI)
-        const feedbackMsg = `The restaurant has a note about your order: "${feedback}". Could you please provide the updated information?`;
-        wasiMsg(feedbackMsg);
+        // Inject this context and modify order smartly using the new function
+        const { handleReceptionistFeedback } = require('./agents/supervisorAgent');
+        const generatedMsg = await handleReceptionistFeedback(sessionId, feedback);
+        if (generatedMsg) wasiMsg(generatedMsg);
 
-        // Inject this context into the session history so agents know what's going on
-        const { updateState, addToHistory } = require('./agents/sessionManager');
-        updateState(sessionId, 'ORDERING');
-        addToHistory(sessionId, 'assistant', feedbackMsg);
-        
-        // Also reset the order status so orderAgent doesn't block it
-        order.status = 'CONFIRMING';
+        // Wait for customer reply, DO NOT force an empty evaluation
+
 
         // Customer replies
         let resolved = false;
@@ -245,22 +243,15 @@ async function receptionistPhase(sessionId, order) {
 
             // Update order if agents captured new info
             if (result.order) {
-              // Merge updated fields back
-              if (result.order.deliveryAddress) order.deliveryAddress = result.order.deliveryAddress;
-              if (result.order.deliveryFee)     order.deliveryFee     = result.order.deliveryFee;
-              if (result.order.eta)             order.eta             = result.order.eta;
-              if (result.order.orderType)       order.orderType       = result.order.orderType;
-              if (result.order.paymentMethod)   order.paymentMethod   = result.order.paymentMethod;
-              if (result.order.items && result.order.items.length > 0) {
-                order.items      = result.order.items;
-                order.totalPrice = result.order.totalPrice;
-              }
+              // Direct assignment syncs all fields properly, including null values
+              Object.assign(order, result.order);
             }
 
-            resolved = true;
-            print();
-            systemNote('  📤 Updated info sent back to receptionist.\n');
-
+            if (result.orderSubmitted) {
+              resolved = true;
+              print();
+              systemNote('  📤 Updated info sent back to receptionist.\n');
+            }
           } catch (err) {
             print(`  ${CLR.red}❌ Error: ${err.message}${CLR.reset}\n`);
           }
