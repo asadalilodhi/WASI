@@ -13,9 +13,6 @@ export default defineConfig({
     server: { entry: "server" },
   },
   nitro: {
-    preset: 'vercel',
-    routeRules: {
-      '/api/**': { proxy: 'https://irregular-jailbreak-contort.ngrok-free.dev/api/**' }
-    }
+    preset: 'vercel'
   }
 });
