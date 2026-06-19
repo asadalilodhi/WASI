@@ -166,7 +166,7 @@ function orderTotal(o: Order) {
   return o.items.reduce((s, i) => s + i.price, 0) + o.deliveryFee;
 }
 
-const BACKEND_URL = "https://wasi-api.loca.lt";
+const BACKEND_URL = "https://irregular-jailbreak-contort.ngrok-free.dev";
 
 function Dashboard() {
   const [orders, setOrders] = useState<Order[]>(initialOrders);
