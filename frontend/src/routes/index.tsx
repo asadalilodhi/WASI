@@ -11,6 +11,7 @@ import {
   Send,
   X,
   Check,
+  Sparkles,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -19,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import ReactMarkdown from 'react-markdown';
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -177,6 +179,11 @@ function Dashboard() {
   const [rejectOther, setRejectOther] = useState("");
   const [now, setNow] = useState(new Date());
   const [showRemove, setShowRemove] = useState(false);
+  
+  // AI Insights State
+  const [showInsights, setShowInsights] = useState(false);
+  const [insightsReport, setInsightsReport] = useState("");
+  const [loadingInsights, setLoadingInsights] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -282,6 +289,19 @@ function Dashboard() {
     setNotes((n) => (n ? n + "\n" : "") + p);
   }
 
+  async function fetchInsights() {
+    setShowInsights(true);
+    setLoadingInsights(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/analytics`);
+      const data = await res.json();
+      setInsightsReport(data.report || "Failed to generate report.");
+    } catch (e) {
+      setInsightsReport("An error occurred while fetching insights.");
+    }
+    setLoadingInsights(false);
+  }
+
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col font-sans antialiased text-slate-900">
       {/* Pulse animation for confirm button */}
@@ -320,6 +340,12 @@ function Dashboard() {
         </div>
 
         <div className="flex items-center gap-4">
+          <button 
+            onClick={fetchInsights}
+            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-sm font-semibold transition-colors"
+          >
+            <Sparkles className="h-4 w-4" /> AI Insights
+          </button>
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#25D366] opacity-75" />
@@ -418,7 +444,7 @@ function Dashboard() {
                 {/* HEADER */}
                 <div className="p-6 border-b border-slate-100 flex items-start justify-between gap-4">
                   <div>
-                    <h1 className="font-bold text-xl tracking-tight">#{selected.id}</h1>
+                    <h1 className="font-bold text-xl tracking-tight">#{selected.id.substring(0, 8)}...</h1>
                     <p className="text-sm text-slate-500 mt-0.5">Arrived {selected.arrivedMinutesAgo} min ago</p>
                   </div>
                   <div>
@@ -561,7 +587,7 @@ function Dashboard() {
                   ) : selected.status === "confirmed" ? (
                     <div className="flex-1 flex flex-col gap-3">
                       <button disabled className="w-full py-3 px-5 rounded-md font-bold bg-[#25D366] text-white flex items-center justify-center gap-2 cursor-default">
-                        <Check className="h-4 w-4" /> Order Confirmed — WhatsApp Notification Sent
+                        <Check className="h-4 w-4" /> Order Confirmed — Sent to Kitchen
                       </button>
                       {showRemove && (
                         <button
@@ -574,7 +600,7 @@ function Dashboard() {
                     </div>
                   ) : (
                     <button disabled className="flex-1 py-3 px-5 rounded-md font-bold bg-red-50 text-red-700 border border-red-200 flex items-center justify-center gap-2 cursor-default">
-                      <X className="h-4 w-4" /> Order Rejected — Customer Notified
+                      <X className="h-4 w-4" /> Order Rejected — AI Notified Customer
                     </button>
                   )}
                 </div>
@@ -584,11 +610,42 @@ function Dashboard() {
         </main>
       </div>
 
+      {/* AI INSIGHTS DIALOG */}
+      <Dialog open={showInsights} onOpenChange={setShowInsights}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-indigo-700 text-xl">
+              <Sparkles className="h-6 w-6" /> AI Business Insights
+            </DialogTitle>
+          </DialogHeader>
+          <div className="mt-4 p-4 rounded-md bg-slate-50 border border-slate-200">
+            {loadingInsights ? (
+              <div className="flex flex-col items-center justify-center py-10 gap-3">
+                <span className="relative flex h-5 w-5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-5 w-5 bg-indigo-500" />
+                </span>
+                <p className="text-slate-500 animate-pulse text-sm">AI is analyzing all orders...</p>
+              </div>
+            ) : (
+              <div className="prose prose-sm prose-indigo max-w-none prose-headings:mb-2 prose-p:mt-0">
+                <ReactMarkdown>{insightsReport}</ReactMarkdown>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <button onClick={() => setShowInsights(false)} className="px-4 py-2 bg-slate-900 text-white rounded-md font-semibold text-sm hover:bg-slate-800 transition-colors">
+              Close
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* REJECT DIALOG */}
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Reject Order #{selected?.id}</DialogTitle>
+            <DialogTitle>Reject Order</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-slate-600">Select a reason. The customer will be notified automatically.</p>
           <RadioGroup value={rejectReason} onValueChange={setRejectReason} className="space-y-1 my-2">

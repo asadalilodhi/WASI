@@ -22,6 +22,14 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
+// Prevent Node from crashing on unhandled errors (e.g. Baileys decryption errors on stale group sessions)
+process.on('uncaughtException', (err) => {
+  console.error('🔥 [CRITICAL] Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🔥 [CRITICAL] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 // In-Memory Database for active orders
 // In a real app, use MongoDB or PostgreSQL
 const ordersDb = {}; 
@@ -140,6 +148,41 @@ app.post('/api/webhook/tool', (req, res) => {
   io.emit('NEW_ORDER', { sessionId, order: orderData });
 
   res.status(200).json({ status: 'Order successfully sent to restaurant portal.' });
+});
+
+/**
+ * Band AI LangGraph Python Agent calls this endpoint for Assistant replies.
+ */
+app.post('/api/webhook/whatsapp', async (req, res) => {
+  const { sessionId, text } = req.body;
+  if (!sessionId || !text) {
+    return res.status(400).json({ error: 'Missing sessionId or text' });
+  }
+
+  const { getJidFromUuid } = require('./bandClient');
+  const jid = getJidFromUuid(sessionId);
+
+  console.log(`\n[Webhook] Routing message from Band AI to WhatsApp: ${jid}`);
+  await sendMessage(jid, text);
+
+  res.status(200).json({ status: 'Message forwarded to WhatsApp.' });
+});
+
+/**
+ * Generates an AI Business Insights Report
+ */
+app.get('/api/analytics', (req, res) => {
+  const { exec } = require('child_process');
+  const path = require('path');
+  const scriptPath = path.join(__dirname, '..', 'analytics_agent.py');
+  
+  exec(`uv run python "${scriptPath}"`, { cwd: path.join(__dirname, '..') }, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Analytics Error: ${error.message}`);
+      return res.status(500).json({ error: 'Failed to generate report' });
+    }
+    res.json({ report: stdout });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────

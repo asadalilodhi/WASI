@@ -5,40 +5,55 @@
 //  to the Band AI Project endpoint.
 // ============================================================
 
-const axios = require('axios');
-require('dotenv').config();
+const { exec } = require('child_process');
+const path = require('path');
+const crypto = require('crypto');
+const fs = require('fs');
 
-/**
- * Sends a message to Band AI on behalf of a specific session/phone number.
- * @param {string} sessionId - The phone number acting as the session ID
- * @param {string} message - The message content
- * @param {string} role - 'user' for customer messages, 'system' for receptionist feedback
- * @returns {Promise<object>} - The full payload containing reply, orderSubmitted, etc.
- */
-async function callBandAI(sessionId, message, role = 'user') {
-  const url = `http://localhost:3001/chat`;
-
-  const payload = {
-    sender: sessionId,
-    message: message,
-    role: role
-  };
-
+function getJidFromUuid(uuid) {
   try {
-    const response = await axios.post(url, payload);
-    return response.data;
-  } catch (error) {
-    console.error(`⚠️ [BandClient] Error calling local Band Agent:`, error.message);
-    return { reply: "Sorry, the restaurant's AI system is currently down. Please try again later." };
+    const sessionsPath = path.join(__dirname, '..', 'sessions.json');
+    if (fs.existsSync(sessionsPath)) {
+      const sessions = JSON.parse(fs.readFileSync(sessionsPath, 'utf8'));
+      // Find the JID (key) that has this UUID (value)
+      for (const [jid, roomId] of Object.entries(sessions)) {
+        if (roomId === uuid) return jid;
+      }
+    }
+  } catch (e) {
+    console.error("Error reading sessions.json:", e);
   }
+  return uuid;
+}
+
+const axios = require('axios');
+
+function injectEvent(chatId, message, role = "system", orderStatus = null) {
+  return new Promise((resolve, reject) => {
+    const payload = {
+      sessionId: chatId,
+      text: message,
+      role: role
+    };
+    if (orderStatus) {
+      payload.order_status = orderStatus;
+    }
+    axios.post('http://127.0.0.1:8000/band_webhook', payload).then(response => {
+      console.log(`[BandClient] Event Injected via Local Server: ${message.substring(0, 30)}...`);
+      resolve();
+    }).catch(error => {
+      console.error(`⚠️ [BandClient] Error injecting event via Local Server: ${error.message}`);
+      reject(error);
+    });
+  });
 }
 
 /**
- * Injects Receptionist feedback into the Band AI session (Usually for rejections/revisions).
+ * Injects Receptionist feedback into the Band AI session.
  */
 async function sendReceptionistFeedbackToBand(sessionId, feedback) {
   const systemMessage = `[SYSTEM MESSAGE FROM RECEPTIONIST]: The receptionist rejected the order or requested changes. Feedback: "${feedback}". Please clear the rejected field and ask the customer to provide it again.`;
-  return await callBandAI(sessionId, systemMessage, 'system');
+  await injectEvent(sessionId, systemMessage, "system", "REVISION_NEEDED");
 }
 
 /**
@@ -46,7 +61,16 @@ async function sendReceptionistFeedbackToBand(sessionId, feedback) {
  */
 async function sendReceptionistNoteToBand(sessionId, note) {
   const systemMessage = `[SYSTEM MESSAGE FROM RECEPTIONIST]: "${note}". Please relay this message or address this constraint with the customer directly.`;
-  return await callBandAI(sessionId, systemMessage, 'system');
+  await injectEvent(sessionId, systemMessage, "system", "REVISION_NEEDED");
 }
 
-module.exports = { callBandAI, sendReceptionistFeedbackToBand, sendReceptionistNoteToBand };
+/**
+ * Forwards user messages from WhatsApp to Band AI.
+ * We pass 'user' as the role.
+ */
+async function callBandAI(chatId, message) {
+  await injectEvent(chatId, message, "user");
+  return {};
+}
+
+module.exports = { sendReceptionistFeedbackToBand, sendReceptionistNoteToBand, callBandAI, getJidFromUuid };

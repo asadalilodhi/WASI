@@ -10,11 +10,14 @@ def delivery_node(state: State) -> dict:
     messages = state.get("messages", [])
     
     receptionist_notes = state.get("receptionist_notes", [])
+    phone_num = state.get('phone_number')
+    delivery_question = f'Ask them: "Aapka messaging number {phone_num} hai. Kya delivery ke waqt is pe call karein ya koi doosra number use karein?"' if phone_num else 'Ask them: "Delivery ke waqt kis number par call karein?"'
+
     system_prompt = f"""You are WASI's Delivery Agent.
 The customer has finished selecting items. You need to collect:
 1. Order Type: "Delivery" or "Takeaway"?
 2. Delivery Address (only if Delivery).
-3. Delivery Number (only if Delivery). Ask them: "Aapka messaging number {state.get('phone_number')} hai. Kya delivery ke waqt is pe call karein ya koi doosra number use karein?"
+3. Delivery Number (only if Delivery). {delivery_question}
 
 Receptionist Notes / Constraints: {receptionist_notes}
 CRITICAL: You MUST strictly obey any constraints listed in the Receptionist Notes. If the notes say an address is invalid, you MUST reject that address if the user provides it again, and ask them for a different one.
@@ -26,7 +29,7 @@ Respond ONLY with JSON:
 {{
     "order_type": "Delivery" | "Takeaway" | null,
     "delivery_address": "123 Street..." | null,
-    "delivery_number": "03001234567" | "{state.get('phone_number')}" | null,
+    "delivery_number": "03001234567" | null,
     "reply_to_user": "Your conversational reply in Roman Urdu asking for the missing info. Leave this empty if you found type, address, and delivery number!"
 }}
 """

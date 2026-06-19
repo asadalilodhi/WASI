@@ -6,8 +6,8 @@ class State(TypedDict):
     Represents the state of a single customer's order session in LangGraph.
     This replaces the in-memory Javascript `order` object.
     """
-    session_id: str
-    phone_number: str
+    session_id: Optional[str]
+    phone_number: Optional[str]
     
     # Cart details
     cart_items: List[Dict[str, Any]]
@@ -21,7 +21,7 @@ class State(TypedDict):
     delivery_number: Optional[str]   # e.g., 'Alternate number for delivery'
     
     # Customer Profile Tracking
-    is_returning_user: bool          # True if they have ordered before
+    is_returning_user: Optional[bool]          # True if they have ordered before
     last_order: Optional[Dict[str, Any]] # Their previous order from Supabase
     is_ordering_complete: bool       # True if the user has confirmed they are done adding items to the cart
     

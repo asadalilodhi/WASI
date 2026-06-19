@@ -19,10 +19,82 @@ from python_agents.utils import call_llm
 # pyrefly: ignore [missing-import]
 from python_agents.receptionist_feedback_agent import receptionist_feedback_node
 
+from langchain_core.runnables import RunnableConfig
+
+def init_state_node(state: State, config: RunnableConfig) -> dict:
+    thread_id = config.get("configurable", {}).get("thread_id")
+    
+    if state.get("is_returning_user") is not None:
+        return {} 
+        
+    updates = {
+        "session_id": thread_id,
+        "order_status": "ORDERING",
+        "is_returning_user": False,
+        "is_ordering_complete": False,
+        "receptionist_notes": [],
+        "pending_clarifications": [],
+        "language": "ROMAN-URDU",
+        "cart_items": [],
+        "in_progress_items": [],
+    }
+    
+    import psycopg2
+    import os
+    db_url = os.environ.get("DATABASE_API")
+    if db_url and thread_id:
+        try:
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            cursor.execute("SELECT phone_id, name, delivery_number, address, last_order FROM customers WHERE band_chat_id = %s OR phone_id = %s", (thread_id, thread_id))
+            row = cursor.fetchone()
+            if row:
+                updates["is_returning_user"] = True
+                updates["phone_number"] = row[0]
+                updates["customer_name"] = row[1]
+                updates["delivery_number"] = row[2]
+                updates["delivery_address"] = row[3]
+                updates["last_order"] = row[4]
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            print(f"DB Error fetching customer: {e}")
+            
+            
+    return updates
+
+def reset_node(state: State) -> dict:
+    return {
+        "order_status": "ORDERING",
+        "is_returning_user": None,
+        "is_ordering_complete": False,
+        "receptionist_notes": [],
+        "pending_clarifications": [],
+        "cart_items": [],
+        "in_progress_items": [],
+        "order_type": None,
+        "delivery_address": None,
+        "payment_method": None,
+        "customer_name": None,
+        "delivery_number": None,
+        "last_order": None,
+        "messages": [{"role": "assistant", "content": "Aapka session reset kar diya gaya hai. Naya order shuru karne ke liye kuch bhi likhein!"}]
+    }
+
 def supervisor_router(state: State) -> str:
     """
     Checks missing fields in the state and routes to the correct node.
     """
+    # Check for reset
+    messages = state.get("messages", [])
+    if messages and messages[-1]["role"] == "user":
+        content = str(messages[-1].get("content", "")).lower().strip()
+        if content in ["reset", "restart"]:
+            return "reset_node"
+
+    if state.get("is_returning_user") is None:
+        return "init_state_node"
+        
     if state.get("order_status") == "REVISION_NEEDED":
         return "receptionist_feedback_node"
         
@@ -48,7 +120,7 @@ def supervisor_router(state: State) -> str:
     if not state.get("payment_method"):
         return "payment_node"
         
-    if not state.get("customer_name"):
+    if not state.get("customer_name") or not state.get("phone_number"):
         return "profile_node"
         
     return "confirmation_node"
@@ -111,16 +183,17 @@ Respond ONLY with a JSON object:
                     conn = psycopg2.connect(db_url)
                     cursor = conn.cursor()
                     cursor.execute("""
-                        INSERT INTO customers (phone_id, name, delivery_number, address, last_order)
-                        VALUES (%s, %s, %s, %s, %s)
+                        INSERT INTO customers (phone_id, name, delivery_number, address, last_order, band_chat_id)
+                        VALUES (%s, %s, %s, %s, %s, %s)
                         ON CONFLICT (phone_id) 
-                        DO UPDATE SET name=EXCLUDED.name, delivery_number=EXCLUDED.delivery_number, address=EXCLUDED.address, last_order=EXCLUDED.last_order
+                        DO UPDATE SET name=EXCLUDED.name, delivery_number=EXCLUDED.delivery_number, address=EXCLUDED.address, last_order=EXCLUDED.last_order, band_chat_id=EXCLUDED.band_chat_id
                     """, (
-                        state.get("session_id"), 
+                        state.get("phone_number") or state.get("session_id"), 
                         state.get("customer_name"), 
                         state.get("delivery_number") or state.get("phone_number"), 
                         state.get("delivery_address"),
-                        json.dumps(order_data)
+                        json.dumps(order_data),
+                        state.get("session_id") # This is the band_chat_id from config
                     ))
                     conn.commit()
                     cursor.close()
@@ -131,7 +204,7 @@ Respond ONLY with a JSON object:
             # --- SEND TO WEBHOOK ---
             try:
                 requests.post(
-                    "http://localhost:3000/api/webhook/tool",
+                    "http://127.0.0.1:3000/api/webhook/tool",
                     json={"sessionId": state["session_id"], "orderData": order_data}
                 )
             except Exception:
@@ -177,8 +250,29 @@ Respond ONLY with a JSON object:
 
     return {"messages": [{"role": "assistant", "content": summary}]}
 
+def emit_message_node(state: State) -> dict:
+    messages = state.get("messages", [])
+    if messages:
+        last_msg = messages[-1]
+        if last_msg["role"] == "assistant":
+            try:
+                import requests
+                with open("error_log.txt", "a", encoding="utf-8") as f:
+                    f.write(f"EMITTING TO {state.get('session_id')}: {last_msg['content'][:50]}\n")
+                r = requests.post("http://127.0.0.1:3000/api/webhook/whatsapp", json={
+                    "sessionId": state.get("session_id"),
+                    "text": last_msg["content"]
+                }, timeout=3)
+                with open("error_log.txt", "a", encoding="utf-8") as f:
+                    f.write(f"WEBHOOK STATUS: {r.status_code}\n")
+            except Exception as e:
+                with open("error_log.txt", "a", encoding="utf-8") as f:
+                    f.write(f"WEBHOOK ERROR: {e}\n")
+    return {}
+
 builder = StateGraph(State)
 
+builder.add_node("init_state_node", init_state_node)
 builder.add_node("returning_user_node", returning_user_node)
 builder.add_node("menu_node", menu_node)
 builder.add_node("delivery_node", delivery_node)
@@ -187,21 +281,26 @@ builder.add_node("profile_node", profile_node)
 builder.add_node("confirmation_node", confirmation_node)
 builder.add_node("status_node", status_node)
 builder.add_node("receptionist_feedback_node", receptionist_feedback_node)
+builder.add_node("reset_node", reset_node)
+builder.add_node("emit_message_node", emit_message_node)
 
 builder.add_conditional_edges(START, supervisor_router)
 
 def smart_router(state: State) -> str:
     if state.get("messages") and state["messages"][-1]["role"] == "assistant":
-        return END
+        return "emit_message_node"
     return supervisor_router(state)
 
+builder.add_conditional_edges("init_state_node", smart_router)
 builder.add_conditional_edges("returning_user_node", smart_router)
 builder.add_conditional_edges("menu_node", smart_router)
 builder.add_conditional_edges("delivery_node", smart_router)
 builder.add_conditional_edges("payment_node", smart_router)
 builder.add_conditional_edges("profile_node", smart_router)
 builder.add_conditional_edges("receptionist_feedback_node", smart_router)
-builder.add_edge("confirmation_node", END)
-builder.add_edge("status_node", END)
+builder.add_edge("confirmation_node", "emit_message_node")
+builder.add_edge("status_node", "emit_message_node")
+builder.add_edge("reset_node", "emit_message_node")
+builder.add_edge("emit_message_node", END)
 
 graph = builder.compile()
