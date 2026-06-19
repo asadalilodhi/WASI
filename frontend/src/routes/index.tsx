@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import ReactMarkdown from 'react-markdown';
+import { supabase } from '../lib/supabase';
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -58,65 +59,7 @@ interface Order {
   status: OrderStatus;
 }
 
-const initialOrders: Order[] = [
-  {
-    id: "WA-00847",
-    customer: "Muhammad Bilal",
-    phone: "+92 300 1234567",
-    address: "House 12, Block 5, Gulshan-e-Iqbal, Karachi",
-    type: "DELIVERY",
-    payment: "COD",
-    items: [
-      { qty: 2, name: "Zinger Burger", notes: "extra spicy, no onions", price: 700 },
-      { qty: 1, name: "Large Fries", price: 220 },
-      { qty: 1, name: "Coke 500ml", price: 100 },
-    ],
-    deliveryFee: 100,
-    arrivedMinutesAgo: 2,
-    status: "pending",
-  },
-  {
-    id: "WA-00846",
-    customer: "Ayesha Khan",
-    phone: "+92 333 9876543",
-    address: "Flat 4B, Sea Breeze Plaza, Clifton, Karachi",
-    type: "DELIVERY",
-    payment: "COD",
-    items: [
-      { qty: 1, name: "Chicken Tikka Pizza (Large)", price: 1450 },
-      { qty: 2, name: "Garlic Bread", price: 480 },
-    ],
-    deliveryFee: 150,
-    arrivedMinutesAgo: 6,
-    status: "pending",
-  },
-  {
-    id: "WA-00845",
-    customer: "Hassan Tariq",
-    phone: "+92 321 5550199",
-    type: "TAKEAWAY",
-    payment: "CARD",
-    items: [{ qty: 1, name: "Beef Shawarma Platter", notes: "no garlic sauce", price: 650 }],
-    deliveryFee: 0,
-    arrivedMinutesAgo: 1,
-    status: "pending",
-  },
-  {
-    id: "WA-00844",
-    customer: "Fatima Noor",
-    phone: "+92 345 1112233",
-    address: "C-22, Phase 6, DHA, Karachi",
-    type: "DELIVERY",
-    payment: "COD",
-    items: [
-      { qty: 3, name: "Chicken Roll", price: 750 },
-      { qty: 2, name: "Mint Margarita", price: 360 },
-    ],
-    deliveryFee: 120,
-    arrivedMinutesAgo: 12,
-    status: "confirmed",
-  },
-];
+const initialOrders: Order[] = [];
 
 const rejectReasons = [
   { value: "stock", label: "🚫 Item out of stock" },
@@ -193,25 +136,25 @@ function Dashboard() {
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const res = await fetch(`${BACKEND_URL}/api/orders`, { headers: { "ngrok-skip-browser-warning": "true" } });
-        const data = await res.json();
+        const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        if (!data) return;
         
-        const parsedOrders: Order[] = Object.keys(data).map(sessionId => {
-          const o = data[sessionId];
+        const parsedOrders: Order[] = data.map((o: any) => {
           let uiStatus: OrderStatus = "pending";
           if (o.status === "CONFIRMED") uiStatus = "confirmed";
           if (o.status === "REVISION_NEEDED") uiStatus = "rejected";
           
           return {
-            id: sessionId,
-            customer: o.customerName || "Unknown",
-            phone: o.phoneNumber || sessionId,
-            address: o.deliveryAddress,
-            type: o.orderType || "DELIVERY",
-            payment: o.paymentMethod || "COD",
+            id: o.id,
+            customer: o.customer || "Unknown",
+            phone: o.phone || o.id,
+            address: o.address,
+            type: o.type || "DELIVERY",
+            payment: o.payment || "COD",
             items: o.items || [],
-            deliveryFee: o.orderType === "DELIVERY" ? 100 : 0,
-            arrivedMinutesAgo: 0,
+            deliveryFee: o.deliveryFee || 0,
+            arrivedMinutesAgo: o.arrivedMinutesAgo || 0,
             status: uiStatus
           };
         });
@@ -221,7 +164,7 @@ function Dashboard() {
            setSelectedId(parsedOrders[0].id);
         }
       } catch (e) {
-        console.error("Failed to fetch orders", e);
+        console.error("Failed to fetch orders from Supabase", e);
       }
     };
     
@@ -242,7 +185,7 @@ function Dashboard() {
   async function handleConfirm() {
     if (!selected) return;
     try {
-      await fetch(`${BACKEND_URL}/api/orders/${selected.id}/confirm`, { method: "POST", headers: { "ngrok-skip-browser-warning": "true" } });
+      await supabase.from('orders').update({ status: 'CONFIRMED' }).eq('id', selected.id);
       setOrders((prev) => prev.map((o) => (o.id === selected.id ? { ...o, status: "confirmed" } : o)));
       setShowRemove(false);
       setTimeout(() => setShowRemove(true), 3000);
@@ -257,11 +200,7 @@ function Dashboard() {
       const reasonText = rejectReason === "other" ? rejectOther : rejectReasons.find(r => r.value === rejectReason)?.label;
       const finalFeedback = notes ? `${reasonText} - Notes: ${notes}` : reasonText;
       
-      await fetch(`${BACKEND_URL}/api/orders/${selected.id}/feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
-        body: JSON.stringify({ feedback: finalFeedback })
-      });
+      await supabase.from('orders').update({ status: 'REVISION_NEEDED', notes: finalFeedback }).eq('id', selected.id);
       setOrders((prev) => prev.map((o) => (o.id === selected.id ? { ...o, status: "rejected" } : o)));
       setRejectOpen(false);
     } catch (e) {
@@ -272,11 +211,7 @@ function Dashboard() {
   async function handleSendNote(noteText: string) {
     if (!selected) return;
     try {
-      await fetch(`${BACKEND_URL}/api/orders/${selected.id}/note`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
-        body: JSON.stringify({ note: noteText })
-      });
+      await supabase.from('orders').update({ notes: noteText }).eq('id', selected.id);
       setNotes(""); // clear note text box
       setActivePill(null);
     } catch (e) {

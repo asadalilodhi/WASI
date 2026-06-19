@@ -11,7 +11,13 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 
 const { connectToWhatsApp, setOrderSubmittedCallback, sendMessage } = require('./whatsappClient');
-const { sendReceptionistFeedbackToBand } = require('./bandClient');
+const { sendReceptionistFeedbackToBand, sendReceptionistNoteToBand } = require('./bandClient');
+const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const app = express();
 const server = http.createServer(app);
@@ -30,122 +36,65 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('🔥 [CRITICAL] Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-// In-Memory Database for active orders
-// In a real app, use MongoDB or PostgreSQL
-const ordersDb = {}; 
+const processedFeedback = new Set();
 
-// ─────────────────────────────────────────────────────────────
-//  WEBSOCKETS: Receptionist Dashboard Connection
-// ─────────────────────────────────────────────────────────────
-io.on('connection', (socket) => {
-  console.log(`🔌 [WebSockets] Receptionist connected: ${socket.id}`);
-  
-  socket.on('disconnect', () => {
-    console.log(`🔌 [WebSockets] Receptionist disconnected: ${socket.id}`);
-  });
-});
+setInterval(async () => {
+  try {
+    const { data: orders, error } = await supabase.from('orders').select('*');
+    if (error || !orders) return;
 
-// ─────────────────────────────────────────────────────────────
-//  API ENDPOINTS: Receptionist Web Portal
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Fetch all active orders for the dashboard
- */
-app.get('/api/orders', (req, res) => {
-  res.json(ordersDb);
-});
-
-/**
- * Receptionist rejects/updates the order.
- * We inject this feedback back into the local Supervisor Agent session.
- */
-app.post('/api/orders/:id/feedback', async (req, res) => {
-  const sessionId = req.params.id;
-  const { feedback } = req.body;
-
-  if (!ordersDb[sessionId]) {
-    return res.status(404).json({ error: 'Order not found' });
+    for (const o of orders) {
+      if (o.notes && o.status === 'REVISION_NEEDED') {
+        const key = o.id + '_feedback_' + o.notes;
+        if (!processedFeedback.has(key)) {
+          processedFeedback.add(key);
+          console.log(`\n👨‍💼 [Receptionist] Feedback for ${o.id}: "${o.notes}"`);
+          const bandReply = await sendReceptionistFeedbackToBand(o.id, o.notes);
+          if (bandReply && bandReply.reply) {
+            await sendMessage(o.id, bandReply.reply);
+          }
+        }
+      } else if (o.notes && o.status !== 'REVISION_NEEDED') {
+        const key = o.id + '_note_' + o.notes;
+        if (!processedFeedback.has(key)) {
+          processedFeedback.add(key);
+          console.log(`\n👨‍💼 [Receptionist] Note for ${o.id}: "${o.notes}"`);
+          const bandReply = await sendReceptionistNoteToBand(o.id, o.notes);
+          if (bandReply && bandReply.reply) {
+            await sendMessage(o.id, bandReply.reply);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // ignore polling errors
   }
-
-  console.log(`\n👨‍💼 [Receptionist] Feedback for ${sessionId}: "${feedback}"`);
-
-  // Inject system message to Band AI so it alerts the customer
-  const bandReply = await sendReceptionistFeedbackToBand(sessionId, feedback);
-  const replyMsg = bandReply ? bandReply.reply : null;
-  
-  // Send the feedback reply directly to the customer's WhatsApp
-  const targetPhone = sessionId;
-  if (replyMsg) {
-      await sendMessage(targetPhone, replyMsg);
-  }
-
-  // Update order status in DB
-  ordersDb[sessionId].status = 'REVISION_NEEDED';
-  io.emit('ORDER_UPDATED', { sessionId, order: ordersDb[sessionId] });
-
-  res.json({ status: 'Feedback sent to customer via Band AI', ai_response: replyMsg });
-});
-
-/**
- * Receptionist sends a Note or Quick Reply (does NOT reject order).
- */
-app.post('/api/orders/:id/note', async (req, res) => {
-  const sessionId = req.params.id;
-  const { note } = req.body;
-
-  if (!ordersDb[sessionId]) {
-    return res.status(404).json({ error: 'Order not found' });
-  }
-
-  console.log(`\n👨‍💼 [Receptionist] Note for ${sessionId}: "${note}"`);
-
-  // Inject system message to Band AI so it addresses the note with the customer
-  const { sendReceptionistNoteToBand } = require('./bandClient');
-  const bandReply = await sendReceptionistNoteToBand(sessionId, note);
-  const replyMsg = bandReply ? bandReply.reply : null;
-  
-  // Send the reply directly to the customer's WhatsApp
-  const targetPhone = sessionId;
-  if (replyMsg) {
-      await sendMessage(targetPhone, replyMsg);
-  }
-
-  // We do NOT change order status to 'REVISION_NEEDED' here since it's just a note.
-  res.json({ status: 'Note sent to customer via Band AI', ai_response: replyMsg });
-});
-
-/**
- * Receptionist confirms the order.
- */
-app.post('/api/orders/:id/confirm', (req, res) => {
-  const sessionId = req.params.id;
-
-  if (!ordersDb[sessionId]) {
-    return res.status(404).json({ error: 'Order not found' });
-  }
-
-  ordersDb[sessionId].status = 'CONFIRMED';
-  console.log(`\n✅ [Receptionist] Order ${sessionId} confirmed! Sending to kitchen.`);
-  
-  // Update dashboard
-  io.emit('ORDER_UPDATED', { sessionId, order: ordersDb[sessionId] });
-
-  res.json({ status: 'Order confirmed' });
-});
+}, 3000);
 
 /**
  * Band AI calls this endpoint when an order is finalized (Webhook Tool Call)
  */
-app.post('/api/webhook/tool', (req, res) => {
+app.post('/api/webhook/tool', async (req, res) => {
   const { sessionId, orderData } = req.body;
   if (!sessionId || !orderData) {
     return res.status(400).json({ error: 'Missing sessionId or orderData' });
   }
 
-  ordersDb[sessionId] = orderData;
   console.log(`\n🛎️ [Server] Received order from Band AI for session: ${sessionId}`);
-  io.emit('NEW_ORDER', { sessionId, order: orderData });
+  
+  await supabase.from('orders').upsert({
+      id: sessionId,
+      customer: orderData.customerName || 'Unknown',
+      phone: orderData.phoneNumber || sessionId,
+      address: orderData.deliveryAddress,
+      type: orderData.orderType || 'DELIVERY',
+      payment: orderData.paymentMethod || 'COD',
+      items: orderData.items || [],
+      deliveryFee: orderData.orderType === 'DELIVERY' ? 100 : 0,
+      arrivedMinutesAgo: 0,
+      status: 'pending',
+      notes: ''
+  });
 
   res.status(200).json({ status: 'Order successfully sent to restaurant portal.' });
 });
@@ -196,11 +145,21 @@ server.listen(PORT, async () => {
   // Initialize WhatsApp connection
   console.log(`📱 Initializing WhatsApp Baileys Client...`);
   
-  setOrderSubmittedCallback((sessionId, order) => {
-    // Already handled by webhook now, but we'll leave this in case
-    ordersDb[sessionId] = order;
+  setOrderSubmittedCallback(async (sessionId, order) => {
     console.log(`\n🛎️ [Server] Received order from Band AI via callback: ${sessionId}`);
-    io.emit('NEW_ORDER', { sessionId, order });
+    await supabase.from('orders').upsert({
+      id: sessionId,
+      customer: order.customerName || 'Unknown',
+      phone: order.phoneNumber || sessionId,
+      address: order.deliveryAddress,
+      type: order.orderType || 'DELIVERY',
+      payment: order.paymentMethod || 'COD',
+      items: order.items || [],
+      deliveryFee: order.orderType === 'DELIVERY' ? 100 : 0,
+      arrivedMinutesAgo: 0,
+      status: 'pending',
+      notes: ''
+    });
   });
 
   connectToWhatsApp();
