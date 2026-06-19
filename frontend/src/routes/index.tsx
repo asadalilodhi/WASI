@@ -424,6 +424,13 @@ function Dashboard() {
               })
             )}
           </div>
+
+          {/* QR CODE FOR JUDGES */}
+          <div className="p-4 border-t border-slate-200 bg-slate-50 text-center shrink-0">
+            <p className="text-xs font-bold text-slate-500 mb-2">SCAN TO ORDER (DEMO)</p>
+            <img src="/qr-code.jpeg" alt="WhatsApp QR Code" className="w-40 h-40 mx-auto rounded-lg shadow-sm border border-slate-200 object-cover" />
+            <p className="text-[10px] text-slate-400 mt-2 leading-tight">Scan this with your phone camera to chat with the AI Receptionist!</p>
+          </div>
         </aside>
 
         {/* DETAILS */}
