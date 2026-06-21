@@ -22,20 +22,26 @@ The customer has finished selecting items. You need to collect:
 Receptionist Notes / Constraints: {receptionist_notes}
 CRITICAL: You MUST strictly obey any constraints listed in the Receptionist Notes. If the notes say an address is invalid, you MUST reject that address if the user provides it again, and ask them for a different one.
 
+If the user is trying to add, remove, or change food items (e.g., "suggest something for 2000", "add a burger", "remove the fries"), set "wants_to_change_order" to true.
+
 Review the conversation and extract what you can.
 If anything is missing, ask the user.
 
 Respond ONLY with JSON:
 {{
+    "wants_to_change_order": true | false,
     "order_type": "Delivery" | "Takeaway" | null,
     "delivery_address": "123 Street..." | null,
     "delivery_number": "03001234567" | null,
-    "reply_to_user": "Your conversational reply in Roman Urdu asking for the missing info. Leave this empty if you found type, address, and delivery number!"
+    "reply_to_user": "Your conversational reply in Roman Urdu asking for the missing info. Leave this empty if you found type, address, and delivery number, or if wants_to_change_order is true!"
 }}
 """
     recent_messages = messages[-10:] if len(messages) >= 10 else messages
     result = call_llm(system_prompt, recent_messages, force_json=True)
     
+    if result.get("wants_to_change_order"):
+        return {"is_ordering_complete": False}
+        
     updates = {}
     
     if result.get("order_type"):

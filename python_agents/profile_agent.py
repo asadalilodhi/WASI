@@ -12,17 +12,23 @@ def profile_node(state: State) -> dict:
     system_prompt = """You are WASI's Profile Agent.
 You need to ask the customer for their full name AND their contact number.
 
+If the user is trying to add, remove, or change food items (e.g., "suggest something for 2000", "add a burger", "remove the fries"), set "wants_to_change_order" to true.
+
 Review the conversation to see if they already gave their name and contact number.
 Respond ONLY with JSON:
 {
+    "wants_to_change_order": true | false,
     "customer_name": "John Doe" | null,
     "phone_number": "03001234567" | null,
-    "reply_to_user": "Your conversational reply in Roman Urdu asking for their name and/or contact number if not provided. Leave this empty if you found BOTH!"
+    "reply_to_user": "Your conversational reply in Roman Urdu asking for their name and/or contact number if not provided. Leave this empty if you found BOTH or if wants_to_change_order is true!"
 }
 """
     recent_messages = messages[-10:] if len(messages) >= 10 else messages
     result = call_llm(system_prompt, recent_messages, force_json=True)
     
+    if result.get("wants_to_change_order"):
+        return {"is_ordering_complete": False}
+        
     updates = {}
     
     if result.get("customer_name"):
