@@ -8,7 +8,7 @@ import { n as RadioGroupIndicator, r as RadioGroupItem$1, t as RadioGroup$1 } fr
 import { t as Root } from "../_libs/radix-ui__react-label.mjs";
 import { n as AnimatePresence, t as motion } from "../_libs/framer-motion.mjs";
 import { t as createClient } from "../_libs/supabase__supabase-js.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-CevUuqLI.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-WXCZrtWZ.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function cn(...inputs) {
@@ -360,15 +360,6 @@ function Dashboard() {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 		className: "h-screen w-screen overflow-hidden flex flex-col font-sans antialiased text-slate-800 bg-[#FFF7F0]",
 		children: [
-			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: `
-        @keyframes wasi-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.4); }
-          50% { box-shadow: 0 0 0 10px rgba(37, 211, 102, 0); }
-        }
-        .wasi-confirm { animation: wasi-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-        .scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
-        .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
-      ` }),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
 				className: "h-[72px] bg-white/80 backdrop-blur-md text-slate-800 flex items-center justify-between px-6 shrink-0 border-b border-orange-100 sticky top-0 z-50",
 				children: [

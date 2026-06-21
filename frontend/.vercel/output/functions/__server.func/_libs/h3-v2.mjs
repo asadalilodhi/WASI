@@ -1,4 +1,4 @@
-import { a as NodeResponse, o as FastURL, s as NullProtoObj } from "./h3+rou3+srvx.mjs";
+import { c as NullProtoObj, o as NodeResponse, s as FastURL } from "./h3+rou3+srvx.mjs";
 //#region node_modules/h3-v2/dist/h3-Bz4OPZv_.mjs
 function decodePathname(pathname) {
 	return decodeURI(pathname.includes("%25") ? pathname.replace(/%25/g, "%2525") : pathname);

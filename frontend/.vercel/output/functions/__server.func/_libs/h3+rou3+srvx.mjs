@@ -646,5 +646,121 @@ var H3Core = class {
 		return routeMiddleware ? [...globalMiddleware, ...routeMiddleware] : globalMiddleware;
 	}
 };
+var PayloadMethods = new Set([
+	"PATCH",
+	"POST",
+	"PUT",
+	"DELETE"
+]);
+var ignoredHeaders = new Set([
+	"transfer-encoding",
+	"connection",
+	"keep-alive",
+	"upgrade",
+	"expect",
+	"host",
+	"accept"
+]);
+function rewriteCookieProperty(header, map, property) {
+	const _map = typeof map === "string" ? { "*": map } : map;
+	return header.replace(new RegExp(`(;\\s*${property}=)([^;]+)`, "gi"), (match, prefix, previousValue) => {
+		let newValue;
+		if (previousValue in _map) newValue = _map[previousValue];
+		else if ("*" in _map) newValue = _map["*"];
+		else return match;
+		return newValue ? prefix + newValue : "";
+	});
+}
+function mergeHeaders(defaults, ...inputs) {
+	const _inputs = inputs.filter(Boolean);
+	if (_inputs.length === 0) return defaults;
+	const merged = new Headers(defaults);
+	for (const input of _inputs) {
+		const entries = Array.isArray(input) ? input : typeof input.entries === "function" ? input.entries() : Object.entries(input);
+		for (const [key, value] of entries) if (value !== void 0) merged.set(key, value);
+	}
+	return merged;
+}
+async function proxyRequest(event, target, opts = {}) {
+	const requestBody = PayloadMethods.has(event.req.method) ? event.req.body : void 0;
+	const method = opts.fetchOptions?.method || event.req.method;
+	const fetchHeaders = mergeHeaders(getProxyRequestHeaders(event, {
+		host: target.startsWith("/"),
+		forwardHeaders: opts.forwardHeaders,
+		filterHeaders: opts.filterHeaders
+	}), opts.fetchOptions?.headers, opts.headers);
+	return proxy(event, target, {
+		...opts,
+		fetchOptions: {
+			method,
+			body: requestBody,
+			duplex: requestBody ? "half" : void 0,
+			...opts.fetchOptions,
+			headers: fetchHeaders
+		}
+	});
+}
+async function proxy(event, target, opts = {}) {
+	const fetchOptions = {
+		headers: opts.headers,
+		...opts.fetchOptions
+	};
+	let response;
+	try {
+		response = target[0] === "/" ? await event.app.fetch(createSubRequest(event, target, fetchOptions)) : await fetch(target, fetchOptions);
+	} catch (error) {
+		throw new HTTPError({
+			status: 502,
+			cause: error
+		});
+	}
+	const headers = new Headers();
+	const cookies = [];
+	for (const [key, value] of response.headers.entries()) {
+		if (key === "content-encoding" || key === "content-length" || key === "transfer-encoding") continue;
+		if (key === "set-cookie") {
+			cookies.push(value);
+			continue;
+		}
+		headers.append(key, value);
+	}
+	if (cookies.length > 0) {
+		const _cookies = cookies.map((cookie) => {
+			if (opts.cookieDomainRewrite) cookie = rewriteCookieProperty(cookie, opts.cookieDomainRewrite, "domain");
+			if (opts.cookiePathRewrite) cookie = rewriteCookieProperty(cookie, opts.cookiePathRewrite, "path");
+			return cookie;
+		});
+		for (const cookie of _cookies) headers.append("set-cookie", cookie);
+	}
+	if (opts.onResponse) await opts.onResponse(event, response);
+	return new HTTPResponse(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers
+	});
+}
+function getProxyRequestHeaders(event, opts) {
+	const headers = new NullProtoObj();
+	for (const [name, value] of event.req.headers.entries()) {
+		if (opts?.filterHeaders?.includes(name)) continue;
+		if (opts?.forwardHeaders?.includes(name)) {
+			headers[name] = value;
+			continue;
+		}
+		if (!ignoredHeaders.has(name) || name === "host" && opts?.host) {
+			headers[name] = value;
+			continue;
+		}
+	}
+	return headers;
+}
+function createSubRequest(event, path, init) {
+	const url = new URL(path, event.url);
+	const req = new Request(url, init);
+	req.runtime = event.req.runtime;
+	req.waitUntil = event.req.waitUntil;
+	req.ip = event.req.ip;
+	return req;
+}
 //#endregion
-export { NodeResponse as a, toRequest as i, HTTPError as n, FastURL as o, defineLazyEventHandler as r, NullProtoObj as s, H3Core as t };
+export { toRequest as a, NullProtoObj as c, proxyRequest as i, HTTPError as n, NodeResponse as o, defineLazyEventHandler as r, FastURL as s, H3Core as t };

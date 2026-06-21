@@ -237,17 +237,6 @@ function Dashboard() {
 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col font-sans antialiased text-slate-800 bg-[#FFF7F0]">
-      {/* Pulse animation for confirm button */}
-      <style>{`
-        @keyframes wasi-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.4); }
-          50% { box-shadow: 0 0 0 10px rgba(37, 211, 102, 0); }
-        }
-        .wasi-confirm { animation: wasi-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-        .scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
-        .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
-      `}</style>
-
       {/* TOP NAV */}
       <header className="h-[72px] bg-white/80 backdrop-blur-md text-slate-800 flex items-center justify-between px-6 shrink-0 border-b border-orange-100 sticky top-0 z-50">
         <div className="flex items-center gap-4">
