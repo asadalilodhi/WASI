@@ -3,7 +3,7 @@ import { v as require_jsx_runtime, y as require_react } from "../_libs/@radix-ui
 import { c as HeadContent, d as Outlet, f as lazyRouteComponent, g as useRouter, h as Link, m as createRootRouteWithContext, p as createFileRoute, s as Scripts, u as createRouter } from "../_libs/@tanstack/react-router+[...].mjs";
 import { t as QueryClient } from "../_libs/tanstack__query-core.mjs";
 import { t as QueryClientProvider } from "../_libs/tanstack__react-query.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/router-CrhZ4bLX.js
+//#region node_modules/.nitro/vite/services/ssr/assets/router-uEJT8-9c.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var styles_default = "/assets/styles-CioS9gjB.css";
@@ -148,7 +148,7 @@ function RootComponent() {
 		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Outlet, {})
 	});
 }
-var $$splitComponentImporter$1 = () => import("./admin-DUVQz9Wu.mjs");
+var $$splitComponentImporter$1 = () => import("./admin-C1LmaLY9.mjs");
 var Route$1 = createFileRoute("/admin")({
 	head: () => ({ meta: [
 		{ title: "WASI Receptionist Dashboard" },

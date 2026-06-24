@@ -91,6 +91,7 @@ async def get_analytics():
             ["uv", "run", "python", script_path],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=True
         )
         return {"report": result.stdout}

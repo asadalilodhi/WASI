@@ -60,6 +60,8 @@ Orders Data:
 Format the output strictly as Markdown, using emojis and clean headers.
 """
         response = llm.invoke(prompt)
+        import sys
+        sys.stdout.reconfigure(encoding='utf-8')
         print(response.content)
         
     except Exception as e:

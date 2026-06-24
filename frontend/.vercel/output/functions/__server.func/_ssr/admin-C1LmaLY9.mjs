@@ -9,7 +9,7 @@ import { n as RadioGroupIndicator, r as RadioGroupItem$1, t as RadioGroup$1 } fr
 import { t as Root } from "../_libs/radix-ui__react-label.mjs";
 import { n as AnimatePresence, t as motion } from "../_libs/framer-motion.mjs";
 import { t as createClient } from "../_libs/supabase__supabase-js.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/admin-DUVQz9Wu.js
+//#region node_modules/.nitro/vite/services/ssr/assets/admin-C1LmaLY9.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function cn(...inputs) {
@@ -276,7 +276,7 @@ function Dashboard() {
 						customer: o.customer || "Unknown",
 						phone: o.phone || o.id,
 						address: o.address,
-						type: o.type || "DELIVERY",
+						type: (o.type || "DELIVERY").toUpperCase(),
 						payment: o.payment || "COD",
 						items: o.items || [],
 						deliveryFee: o.deliveryFee || 0,

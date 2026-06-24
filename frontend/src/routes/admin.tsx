@@ -149,7 +149,7 @@ function Dashboard() {
             customer: o.customer || "Unknown",
             phone: o.phone || o.id,
             address: o.address,
-            type: o.type || "DELIVERY",
+            type: (o.type || "DELIVERY").toUpperCase() as OrderType,
             payment: o.payment || "COD",
             items: o.items || [],
             deliveryFee: o.deliveryFee || 0,
