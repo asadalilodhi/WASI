@@ -224,6 +224,19 @@ var Clock = createLucideIcon("clock", [["circle", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var House = createLucideIcon("house", [["path", {
+	d: "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8",
+	key: "5wwlr5"
+}], ["path", {
+	d: "M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+	key: "r6nss1"
+}]]);
+/**
+* @license lucide-react v0.575.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var LayoutDashboard = createLucideIcon("layout-dashboard", [
 	["rect", {
 		width: "7",
@@ -465,4 +478,4 @@ var Zap = createLucideIcon("zap", [["path", {
 	key: "1xq2db"
 }]]);
 //#endregion
-export { Bot as _, Send as a, Plus as c, MapPin as d, LayoutDashboard as f, Check as g, ChevronDown as h, ShieldCheck as i, MessageSquare as l, Circle as m, X as n, Search as o, Clock as p, Sparkles as r, QrCode as s, Zap as t, MessageCircle as u, Bell as v, ArrowRight as y };
+export { Check as _, Send as a, ArrowRight as b, Plus as c, MapPin as d, LayoutDashboard as f, ChevronDown as g, Circle as h, ShieldCheck as i, MessageSquare as l, Clock as m, X as n, Search as o, House as p, Sparkles as r, QrCode as s, Zap as t, MessageCircle as u, Bot as v, Bell as y };

@@ -1,6 +1,7 @@
 import { o as __toESM } from "../_runtime.mjs";
 import { a as Trigger2, i as Root2, n as Header, r as Item, t as Content2, v as require_jsx_runtime, y as require_react } from "../_libs/@radix-ui/react-accordion+[...].mjs";
-import { a as Send, c as Plus, d as MapPin, f as LayoutDashboard, g as Check, h as ChevronDown, m as Circle, n as X, o as Search, p as Clock, r as Sparkles, u as MessageCircle, v as Bell } from "../_libs/lucide-react.mjs";
+import { h as Link } from "../_libs/@tanstack/react-router+[...].mjs";
+import { _ as Check, a as Send, c as Plus, d as MapPin, f as LayoutDashboard, g as ChevronDown, h as Circle, m as Clock, n as X, o as Search, p as House, r as Sparkles, u as MessageCircle, y as Bell } from "../_libs/lucide-react.mjs";
 import { a as DialogOverlay$1, i as DialogDescription$1, n as DialogClose, o as DialogPortal$1, r as DialogContent$1, s as DialogTitle$1, t as Dialog$1 } from "../_libs/@radix-ui/react-dialog+[...].mjs";
 import { n as clsx, t as cva } from "../_libs/class-variance-authority+clsx.mjs";
 import { t as twMerge } from "../_libs/tailwind-merge.mjs";
@@ -8,7 +9,7 @@ import { n as RadioGroupIndicator, r as RadioGroupItem$1, t as RadioGroup$1 } fr
 import { t as Root } from "../_libs/radix-ui__react-label.mjs";
 import { n as AnimatePresence, t as motion } from "../_libs/framer-motion.mjs";
 import { t as createClient } from "../_libs/supabase__supabase-js.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/admin-Bq1qbkql.js
+//#region node_modules/.nitro/vite/services/ssr/assets/admin-DUVQz9Wu.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function cn(...inputs) {
@@ -363,8 +364,9 @@ function Dashboard() {
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
 				className: "h-[72px] bg-white/80 backdrop-blur-md text-slate-800 flex items-center justify-between px-6 shrink-0 border-b border-orange-100 sticky top-0 z-50",
 				children: [
-					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "flex items-center gap-4",
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Link, {
+						to: "/",
+						className: "flex items-center gap-4 hover:scale-105 transition-transform",
 						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 							className: "h-10 w-10 rounded-xl bg-gradient-to-br from-[#25D366] to-[#1da851] flex items-center justify-center text-white font-black text-lg shadow-lg shadow-green-500/20",
 							children: "W"
@@ -407,6 +409,11 @@ function Dashboard() {
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "flex items-center gap-5",
 						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Link, {
+								to: "/",
+								className: "flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full text-sm font-bold transition-all hover:scale-105",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(House, { className: "h-4 w-4" }), " Home"]
+							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 								onClick: fetchInsights,
 								className: "group flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-400 to-amber-500 hover:from-orange-500 hover:to-amber-600 text-white rounded-full text-sm font-bold shadow-md shadow-orange-500/20 transition-all hover:scale-105",

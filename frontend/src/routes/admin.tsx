@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   Bell,
@@ -14,7 +14,8 @@ import {
   Sparkles,
   ChevronRight,
   Clock,
-  LayoutDashboard
+  LayoutDashboard,
+  Home
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -239,13 +240,13 @@ function Dashboard() {
     <div className="h-screen w-screen overflow-hidden flex flex-col font-sans antialiased text-slate-800 bg-[#FFF7F0]">
       {/* TOP NAV */}
       <header className="h-[72px] bg-white/80 backdrop-blur-md text-slate-800 flex items-center justify-between px-6 shrink-0 border-b border-orange-100 sticky top-0 z-50">
-        <div className="flex items-center gap-4">
+        <Link to="/" className="flex items-center gap-4 hover:scale-105 transition-transform">
           <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#25D366] to-[#1da851] flex items-center justify-center text-white font-black text-lg shadow-lg shadow-green-500/20">W</div>
           <div className="flex flex-col">
             <span className="font-extrabold text-lg tracking-tight leading-tight">WASI</span>
             <span className="text-orange-500 text-[11px] font-bold tracking-widest uppercase">Admin Dashboard</span>
           </div>
-        </div>
+        </Link>
 
         <div className="hidden md:flex items-center gap-6">
           <div className="flex items-center gap-2 bg-orange-50/80 px-4 py-2 rounded-full border border-orange-100">
@@ -257,6 +258,12 @@ function Dashboard() {
         </div>
 
         <div className="flex items-center gap-5">
+          <Link 
+            to="/"
+            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full text-sm font-bold transition-all hover:scale-105"
+          >
+            <Home className="h-4 w-4" /> Home
+          </Link>
           <button 
             onClick={fetchInsights}
             className="group flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-400 to-amber-500 hover:from-orange-500 hover:to-amber-600 text-white rounded-full text-sm font-bold shadow-md shadow-orange-500/20 transition-all hover:scale-105"

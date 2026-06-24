@@ -1,7 +1,7 @@
 import { v as require_jsx_runtime } from "../_libs/@radix-ui/react-accordion+[...].mjs";
-import { _ as Bot, f as LayoutDashboard, i as ShieldCheck, l as MessageSquare, s as QrCode, t as Zap, y as ArrowRight } from "../_libs/lucide-react.mjs";
-import { t as motion } from "../_libs/framer-motion.mjs";
 import { h as Link } from "../_libs/@tanstack/react-router+[...].mjs";
+import { b as ArrowRight, f as LayoutDashboard, i as ShieldCheck, l as MessageSquare, s as QrCode, t as Zap, v as Bot } from "../_libs/lucide-react.mjs";
+import { t as motion } from "../_libs/framer-motion.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/routes-CzHdAKnH.js
 var import_jsx_runtime = require_jsx_runtime();
 function LandingPage() {
