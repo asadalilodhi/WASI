@@ -3,10 +3,10 @@ import { v as require_jsx_runtime, y as require_react } from "../_libs/@radix-ui
 import { c as HeadContent, d as Outlet, f as lazyRouteComponent, g as useRouter, h as Link, m as createRootRouteWithContext, p as createFileRoute, s as Scripts, u as createRouter } from "../_libs/@tanstack/react-router+[...].mjs";
 import { t as QueryClient } from "../_libs/tanstack__query-core.mjs";
 import { t as QueryClientProvider } from "../_libs/tanstack__react-query.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/router-DyvjfdVC.js
+//#region node_modules/.nitro/vite/services/ssr/assets/router-CAYRwGQ2.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
-var styles_default = "/assets/styles-Buj3WCgW.css";
+var styles_default = "/assets/styles-CZzNtVb9.css";
 function reportLovableError(error, context = {}) {
 	if (typeof window === "undefined") return;
 	window.__lovableEvents?.captureException?.(error, {
@@ -87,7 +87,7 @@ function ErrorComponent({ error, reset }) {
 		})
 	});
 }
-var Route$1 = createRootRouteWithContext()({
+var Route$2 = createRootRouteWithContext()({
 	head: () => ({
 		meta: [
 			{ charSet: "utf-8" },
@@ -142,14 +142,14 @@ function RootShell({ children }) {
 	});
 }
 function RootComponent() {
-	const { queryClient } = Route$1.useRouteContext();
+	const { queryClient } = Route$2.useRouteContext();
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QueryClientProvider, {
 		client: queryClient,
 		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Outlet, {})
 	});
 }
-var $$splitComponentImporter = () => import("./routes-WXCZrtWZ.mjs");
-var rootRouteChildren = { IndexRoute: createFileRoute("/")({
+var $$splitComponentImporter$1 = () => import("./admin-Bq1qbkql.mjs");
+var Route$1 = createFileRoute("/admin")({
 	head: () => ({ meta: [
 		{ title: "WASI Receptionist Dashboard" },
 		{
@@ -165,13 +165,30 @@ var rootRouteChildren = { IndexRoute: createFileRoute("/")({
 			content: "Live order queue, customer details, and one-click confirmations for restaurant receptionists."
 		}
 	] }),
+	component: lazyRouteComponent($$splitComponentImporter$1, "component")
+});
+var $$splitComponentImporter = () => import("./routes-CzHdAKnH.mjs");
+var Route = createFileRoute("/")({
+	head: () => ({ meta: [{ title: "WASI — Your Restaurant's AI Receptionist" }, {
+		name: "description",
+		content: "Meet WASI, the AI Receptionist that takes fast food orders over WhatsApp."
+	}] }),
 	component: lazyRouteComponent($$splitComponentImporter, "component")
-}).update({
-	id: "/",
-	path: "/",
-	getParentRoute: () => Route$1
-}) };
-var routeTree = Route$1._addFileChildren(rootRouteChildren)._addFileTypes();
+});
+var AdminRoute = Route$1.update({
+	id: "/admin",
+	path: "/admin",
+	getParentRoute: () => Route$2
+});
+var rootRouteChildren = {
+	IndexRoute: Route.update({
+		id: "/",
+		path: "/",
+		getParentRoute: () => Route$2
+	}),
+	AdminRoute
+};
+var routeTree = Route$2._addFileChildren(rootRouteChildren)._addFileTypes();
 var getRouter = () => {
 	return createRouter({
 		routeTree,

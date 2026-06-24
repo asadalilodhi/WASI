@@ -90,8 +90,8 @@ app.post('/api/webhook/tool', async (req, res) => {
       type: orderData.orderType || 'DELIVERY',
       payment: orderData.paymentMethod || 'COD',
       items: orderData.items || [],
-      deliveryFee: orderData.orderType === 'DELIVERY' ? 100 : 0,
-      arrivedMinutesAgo: 0,
+      deliveryfee: orderData.orderType === 'DELIVERY' ? 100 : 0,
+      arrivedminutesago: 0,
       status: 'pending',
       notes: ''
   });
@@ -155,8 +155,8 @@ server.listen(PORT, async () => {
       type: order.orderType || 'DELIVERY',
       payment: order.paymentMethod || 'COD',
       items: order.items || [],
-      deliveryFee: order.orderType === 'DELIVERY' ? 100 : 0,
-      arrivedMinutesAgo: 0,
+      deliveryfee: order.orderType === 'DELIVERY' ? 100 : 0,
+      arrivedminutesago: 0,
       status: 'pending',
       notes: ''
     });

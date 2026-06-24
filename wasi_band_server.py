@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 import uvicorn
 
 # Import the LangGraph builder
+# pyrefly: ignore [missing-import]
 from python_agents.supervisor_agent import builder
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -46,6 +47,7 @@ async def band_webhook(request: Request):
     async def run_graph():
         try:
             async with session_locks[session_id]:
+                # pyrefly: ignore [missing-import]
                 import inject_event
                 # Inject user message to Band AI Cloud for telemetry
                 try:
@@ -78,6 +80,23 @@ async def band_webhook(request: Request):
     asyncio.create_task(run_graph())
     
     return {"status": "processing"}
+
+@app.get("/api/analytics")
+async def get_analytics():
+    import subprocess
+    import os
+    script_path = os.path.join(os.path.dirname(__file__), "analytics_agent.py")
+    try:
+        result = subprocess.run(
+            ["uv", "run", "python", script_path],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return {"report": result.stdout}
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Analytics Error: {e.stderr}")
+        return {"error": "Failed to generate report"}
 
 if __name__ == "__main__":
     logger.info("Starting Local FastAPI Server for WASI Agent on port 8000...")
