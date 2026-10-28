@@ -1,5 +1,6 @@
 ## 🚀 Live Interactive Demo
 https://lablab.ai/ai-hackathons/band-of-agents-hackathon/claudiator/wasi-multi-agent-whatsapp-food-ordering-saas
+
 We have hosted the entire WASI Receptionist Dashboard online so you can experience it live! Since our WhatsApp bot requires a persistent WebSocket connection, the backend orchestrator and Baileys WhatsApp adapter are running 24/7 on our local hardware server, bridged seamlessly to our Vercel-hosted frontend dashboard.
 
 **How to try the demo:**
